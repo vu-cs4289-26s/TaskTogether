@@ -94,7 +94,7 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed structure.
 
 ## Course Information
 
-**Course**: CS 4289 - Project in Web-based Software Architecture
+**Course**: CS 4289 - Project in Web-based Software Architecture    
 **Institution**: Vanderbilt University  
 **Semester**: Spring 2026  
 
