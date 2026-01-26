@@ -1,54 +1,72 @@
-# VandiBites
+# Household Management Platform
 
 ## Project Overview
 
-VandiBites reimagines campus dining by replacing the outdated NetNutrition platform with a modern, mobile-first application that helps students make better dining decisions based on their schedule, preferences, and social context.
+A mobile-first platform where households (roommates, families, partners) manage shared living without the drama. Solve communication breakdown, enable accountability without conflict, set healthy boundaries, eliminate blame culture, acknowledge invisible labor, preserve quality time, and break recurring chaos patterns.
 
-## Features
+## Core Features
 
-### MVP
-1. **Modern Single-Page Application**
-   - Clean, responsive design (mobile-first)
-   - Proper routing with shareable URLs
-   - WCAG accessibility compliance
+### 1. Task System
+- Create tasks with title, description, deadline
+- Assign to household member or leave open
+- Mark as recurring (weekly trash, monthly cleaning)
+- Complete with photo verification (proof it's done/optional)
+- Notifications on assignment and completion
 
-2. **Enhanced Menu Browsing**
-   - Real-time menu updates
-   - Advanced filtering (dietary restrictions, nutrition goals)
-   - Search across all dining halls
+### 2. Issue Reporting
+- Report problems without assigning blame (leak, broke, ran out)
+- Upload photo of the situation
+- Everyone gets notified
+- Track resolution with notes and photos
+- Archive for future reference
 
-3. **Schedule Integration**
-   - Import/add class schedules
-   - Smart dining recommendations based on:
-     - Available time windows
-     - Walking distance to next class
-     - Current crowdedness
+### 3. Communication Hub
+- Household-wide announcements
+- Threaded discussions on specific topics
+- @mention specific people
+- Document household agreements/rules
 
-4. **Visual Food Previews**
-   - User-uploaded food photos
-   - Community-moderated content
-   - Upvote system for quality
+### 4. Quality Time Scheduler (Family Mode)
+- Schedule homework blocks with photo check-in
+- Family bonding activities
+- Balance dashboard (tasks vs quality time)
+- Celebrate completions together
 
-5. **Ratings & Reviews**
-   - Simple 5-star rating system
-   - Short comments and feedback
-   - View rating history
-
-### Possible Features
-- Macro tracking and nutrition goals
-- Friend system with shared schedules
-- Group meal planning
-- Location-based notifications
-- Integration with Vanderbilt SSO
-
+### 5. Household Dashboard
+- At-a-glance view of what needs to be done today
+- Who's responsible for what
+- Recent completions (acknowledge work!)
+- Active issues that need attention
+- Stats/gamification (optional)
 
 ## Technology Stack
 
 ### Frontend
+- **Next.js 14+** (App Router)
+- **TypeScript**
+- **TailwindCSS**
+- **Socket.io** (real-time updates)
 
 ### Backend
+- **Node.js 20+**
+- **Express/Fastify** (TypeScript)
+- **Prisma ORM**
+- **Multer + Sharp** (image upload/processing)
+- **JWT** (authentication)
+- **Nodemailer** (notifications)
+- **node-cron** (recurring tasks)
 
 ### Database
+- **PostgreSQL 15+**
+- Multi-tenant architecture (household isolation)
+- Relational design: users → households → tasks → completions
+
+### Image Storage
+- **AWS S3** (free tier during development)
+- Compressed/resized on upload
+
+### Deployment
+- **AWS EC2**
 
 
 ### Infrastructure
@@ -64,7 +82,7 @@ VandiBites reimagines campus dining by replacing the outdated NetNutrition platf
 vandibites/
 ├── client/
 ├── server/
-├── database/
+├── prisma/ (or database/)
 ├── docs/
 └── scripts/
 ```
@@ -76,13 +94,31 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed structure.
 ## Quick Start
 
 ### Prerequisites
-
+- Node.js 20+
+- Docker & Docker Compose
+- npm or yarn
 
 ### Setup Instructions
 
+See [DEV_SETUP.md](./DEV_SETUP.md) for complete setup and troubleshooting.
+
+```bash
+# Start database
+docker-compose up -d
+
+# Setup backend
+cd server && cp .env.example .env && npm install && npx prisma migrate dev --name init && npm run dev
+
+# In another terminal, setup frontend  
+cd client && npm install && npm run dev
+
+# Visit http://localhost:3000
+```
 
 ## Documentation
 
+- [DEV_SETUP.md](./DEV_SETUP.md) - Setup, configuration, and troubleshooting
+- [ARCHITECTURE.md](./ARCHITECTURE.md) - System design, data model, and API structure
 
 ## Team
 
@@ -97,7 +133,6 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed structure.
 **Course**: CS 4289 - Project in Web-based Software Architecture    
 **Institution**: Vanderbilt University  
 **Semester**: Spring 2026  
-
 
 
 ## License
