@@ -109,3 +109,23 @@ The schema will be defined in [prisma/schema.prisma](./prisma/schema.prisma)
 - **Email Notifications**: Nodemailer for alerts
 - **Recurring Tasks**: node-cron for scheduling
 - **Real-time Updates**: Socket.io for live features
+
+## Architecture Review
+
+### Frontend
+- **Framework**: Next.js 14
+- **Technologies**: React, TypeScript, TailwindCSS
+- **Features**: Real-time updates with Socket.io, JWT Authentication, Image Uploads
+
+### Backend
+- **Framework**: Express
+- **Technologies**: Node.js, Prisma
+- **Features**: Multi-tenant Schema, Notifications
+
+### Database
+- **Type**: PostgreSQL
+- **Schema**: Defined in prisma/schema.prisma
+
+### Issues
+- Ensure all components are well integrated and tested.
+- Address any vulnerabilities reported during setup.

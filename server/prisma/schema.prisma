@@ -1,0 +1,417 @@
+generator client {
+    provider    = "prisma-client-js"
+}
+
+datasource db {
+    provider    = "postgresql"
+    url         = env("DATABASE_URL")
+}
+
+
+enum Role {
+  ADMIN
+  MEMBER
+}
+
+enum TaskStatus {
+    PENDING
+    IN_PROGRESS
+    COMPLETED
+    SKIPPED
+}
+
+enum IssueStatus {
+    OPEN
+    IN_PROGRESS
+    RESOLVED
+    ARCHIVED
+}
+
+enum ActivityType {
+    HOMEWORK
+    BONDING
+    CHORE
+    OTHER
+}
+
+enum ActivityStatus {
+    SCHEDULED
+    IN_PROGRESS
+    COMPLETED
+    CANCELLED
+}
+
+// ============================================
+// USER MANAGEMENT
+// ============================================
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  name          String
+  password      String   // bcrypt hashed
+  avatar        String?
+  role          Role     @default(MEMBER)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Household relationship
+  householdId   String?
+  household     Household? @relation("HouseholdMembers", fields: [householdId], references: [id], onDelete: Cascade)
+  
+  // Ownership
+  ownedHousehold Household? @relation("HouseholdOwner")
+  
+  // Tasks
+  createdTasks       Task[]           @relation("TaskCreator")
+  assignedTasks      TaskAssignment[]
+  completedTasks     TaskCompletion[]
+  
+  // Issues
+  reportedIssues     Issue[]          @relation("IssueReporter")
+  issueComments      IssueComment[]
+  
+  // Communication
+  announcements      Announcement[]
+  discussionThreads  DiscussionThread[]
+  discussionReplies  DiscussionReply[]
+  mentions           Mention[]        @relation("MentionedUser")
+  createdMentions    Mention[]        @relation("MentionCreator")
+  
+  // Quality Time
+  activityParticipants ActivityParticipant[]
+  activityCheckIns     ActivityCheckIn[]
+
+  @@index([householdId])
+  @@index([email])
+}
+
+// ============================================
+// HOUSEHOLD (Multi-tenant)
+// ============================================
+
+model Household {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Owner
+  ownerId   String   @unique
+  owner     User     @relation("HouseholdOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  
+  // Members
+  members   User[]   @relation("HouseholdMembers")
+  
+  // Household data
+  tasks          Task[]
+  issues         Issue[]
+  rules          HouseholdRule[]
+  announcements  Announcement[]
+  discussions    DiscussionThread[]
+  activities     QualityTimeActivity[]
+
+  @@index([ownerId])
+}
+
+// ============================================
+// TASK SYSTEM
+// ============================================
+
+model Task {
+  id                String   @id @default(uuid())
+  title             String
+  description       String?
+  dueDate           DateTime?
+  isRecurring       Boolean  @default(false)
+  recurrencePattern String?  // "daily", "weekly", "monthly", or cron pattern
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relations
+  creatorId    String
+  creator      User      @relation("TaskCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  
+  householdId  String
+  household    Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  
+  // Assignments and completions
+  assignments  TaskAssignment[]
+  completions  TaskCompletion[]
+
+  @@index([householdId])
+  @@index([creatorId])
+  @@index([dueDate])
+  @@index([isRecurring])
+}
+
+model TaskAssignment {
+  id         String     @id @default(uuid())
+  status     TaskStatus @default(PENDING)
+  notifiedAt DateTime?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  // Relations
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, userId])
+  @@index([taskId])
+  @@index([userId])
+  @@index([status])
+}
+
+model TaskCompletion {
+  id          String   @id @default(uuid())
+  photoUrl    String?  // Optional proof photo
+  notes       String?
+  completedAt DateTime @default(now())
+
+  // Relations
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@index([userId])
+  @@index([completedAt])
+}
+
+// ============================================
+// ISSUE TRACKING
+// ============================================
+
+model Issue {
+  id          String      @id @default(uuid())
+  title       String
+  description String?
+  photoUrl    String?     // Photo of the issue
+  status      IssueStatus @default(OPEN)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  // Relations
+  reportedById String
+  reportedBy   User        @relation("IssueReporter", fields: [reportedById], references: [id], onDelete: Cascade)
+  
+  householdId  String
+  household    Household   @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  
+  // Comments/resolution
+  comments IssueComment[]
+
+  @@index([householdId])
+  @@index([reportedById])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model IssueComment {
+  id        String   @id @default(uuid())
+  content   String
+  photoUrl  String?  // Optional photo for resolution
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  issueId String
+  issue   Issue  @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  
+  userId  String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([issueId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// ============================================
+// COMMUNICATION HUB
+// ============================================
+
+model Announcement {
+  id        String   @id @default(uuid())
+  title     String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  authorId    String
+  author      User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  
+  // Mentions in this announcement
+  mentions Mention[]
+
+  @@index([householdId])
+  @@index([authorId])
+  @@index([createdAt])
+}
+
+model DiscussionThread {
+  id        String   @id @default(uuid())
+  title     String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  authorId    String
+  author      User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  
+  // Replies and mentions
+  replies  DiscussionReply[]
+  mentions Mention[]
+
+  @@index([householdId])
+  @@index([authorId])
+  @@index([createdAt])
+}
+
+model DiscussionReply {
+  id        String   @id @default(uuid())
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  threadId String
+  thread   DiscussionThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  
+  // Mentions in this reply
+  mentions Mention[]
+
+  @@index([threadId])
+  @@index([authorId])
+  @@index([createdAt])
+}
+
+model Mention {
+  id        String   @id @default(uuid())
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  // Who is mentioned
+  userId String
+  user   User   @relation("MentionedUser", fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Who created the mention
+  creatorId String
+  creator   User   @relation("MentionCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  
+  // Where the mention is (polymorphic - only one should be set)
+  announcementId String?
+  announcement   Announcement? @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  
+  threadId String?
+  thread   DiscussionThread? @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  
+  replyId String?
+  reply   DiscussionReply? @relation(fields: [replyId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([creatorId])
+  @@index([isRead])
+  @@index([announcementId])
+  @@index([threadId])
+  @@index([replyId])
+}
+
+// ============================================
+// QUALITY TIME SCHEDULER (Family Mode)
+// ============================================
+
+model QualityTimeActivity {
+  id          String         @id @default(uuid())
+  title       String
+  description String?
+  activityType ActivityType
+  status      ActivityStatus @default(SCHEDULED)
+  scheduledAt DateTime
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  // Relations
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  
+  // Participants and check-ins
+  participants ActivityParticipant[]
+  checkIns     ActivityCheckIn[]
+
+  @@index([householdId])
+  @@index([scheduledAt])
+  @@index([status])
+  @@index([activityType])
+}
+
+model ActivityParticipant {
+  id         String   @id @default(uuid())
+  createdAt  DateTime @default(now())
+
+  // Relations
+  activityId String
+  activity   QualityTimeActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([activityId, userId])
+  @@index([activityId])
+  @@index([userId])
+}
+
+model ActivityCheckIn {
+  id          String   @id @default(uuid())
+  photoUrl    String?  // Photo check-in proof
+  notes       String?
+  checkedInAt DateTime @default(now())
+
+  // Relations
+  activityId String
+  activity   QualityTimeActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([activityId])
+  @@index([userId])
+  @@index([checkedInAt])
+}
+
+// ============================================
+// HOUSEHOLD RULES/AGREEMENTS
+// ============================================
+
+model HouseholdRule {
+  id          String   @id @default(uuid())
+  title       String
+  description String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@index([householdId])
+}
+
+

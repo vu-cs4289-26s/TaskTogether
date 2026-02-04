@@ -35,7 +35,7 @@ Frontend runs on `http://localhost:3000`
 
 ### 2. Create Database
 ```bash
-createdb household_dev
+createdb tasktogether_dev
 ```
 
 ### 3. Configure & Setup Backend
@@ -88,7 +88,7 @@ npx prisma migrate reset # Reset database (deletes data)
 ### Port Already in Use
 - Backend (3001): Change `PORT` in `.env`
 - Frontend (3000): Next.js will prompt for alternative
-- Postgres (5432): Change port in `docker-compose.yml`
+- Postgres (5433): Change port in `docker-compose.yml`
 
 ### Database Connection Failed
 ```bash
@@ -118,7 +118,7 @@ npm install
 Create `.env` in the `server/` directory:
 
 ```
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/household_dev"
+DATABASE_URL="postgresql://postgres:postgres@localhost:5433/tasktogether_dev"
 JWT_SECRET="your-secret-key-change-in-production"
 NODE_ENV="development"
 PORT=3001
@@ -309,10 +309,11 @@ npm install
 ├── server/                # Express backend
 │   ├── src/
 │   │   └── index.ts      # Entry point
+│   ├── prisma/
+│   │   └── schema.prisma
 │   ├── package.json
 │   └── tsconfig.json
-├── database/              # Prisma schema
-│   └── schema.prisma
+
 ├── docs/                  # Documentation
 ├── docker-compose.yml     # Local dev environment
 └── README.md

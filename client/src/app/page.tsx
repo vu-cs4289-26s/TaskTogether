@@ -30,7 +30,7 @@ export default function Home() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-slate-900 to-slate-800 p-4">
       <div className="max-w-md w-full bg-slate-700 rounded-lg p-8">
-        <h1 className="text-3xl font-bold text-white mb-2">Household Manager</h1>
+        <h1 className="text-3xl font-bold text-white mb-2">Task Together</h1>
         <p className="text-slate-300 mb-8">Manage shared living without the drama</p>
 
         <div className="space-y-4">
