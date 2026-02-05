@@ -79,15 +79,14 @@ A mobile-first platform where households (roommates, families, partners) manage 
 ## Repository Structure
 
 ```
-vandibites/
+tasktogether/
 ├── client/
 ├── server/
-├── prisma/ (or database/)
 ├── docs/
 └── scripts/
 ```
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed structure.
+See [ARCHITECTURE.md](./docs/ARCHITECTURE.md) for detailed structure.
 
 
 
@@ -100,7 +99,7 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed structure.
 
 ### Setup Instructions
 
-See [DEV_SETUP.md](./DEV_SETUP.md) for complete setup and troubleshooting.
+See [DEV_SETUP.md](./docs/DEV_SETUP.md) for complete setup and troubleshooting.
 
 ```bash
 # Start database
@@ -117,8 +116,8 @@ cd client && npm install && npm run dev
 
 ## Documentation
 
-- [DEV_SETUP.md](./DEV_SETUP.md) - Setup, configuration, and troubleshooting
-- [ARCHITECTURE.md](./ARCHITECTURE.md) - System design, data model, and API structure
+- [DEV_SETUP.md](./docs/DEV_SETUP.md) - Setup, configuration, and troubleshooting
+- [ARCHITECTURE.md](./docs/ARCHITECTURE.md) - System design, data model, and API structure
 
 ## Team
 
