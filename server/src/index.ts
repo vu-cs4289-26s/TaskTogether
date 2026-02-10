@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { PrismaClient } from '@prisma/client';
 import authRouter from './routes/auth.js';
+import householdRouter from './routes/households.js';
 
 const app = express();
 const prisma = new PrismaClient();
@@ -14,6 +15,7 @@ app.use(express.json());
 // Routes
 app.use('/api/auth', authRouter);
 app.use('/api/users', authRouter);
+app.use('/api/households', householdRouter);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -51,6 +53,7 @@ app.get('/', (req, res) => {
       health: '/api/health',
       dbCheck: '/api/db-check',
       auth: '/api/auth',
+      households: '/api/households',
     },
   });
 });
