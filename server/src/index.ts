@@ -1,12 +1,19 @@
 import express from 'express';
+import cors from 'cors';
 import { PrismaClient } from '@prisma/client';
+import authRouter from './routes/auth.js';
 
 const app = express();
 const prisma = new PrismaClient();
 const PORT = process.env.PORT || 3001;
 
 // Middleware
+app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:3000' }));
 app.use(express.json());
+
+// Routes
+app.use('/api/auth', authRouter);
+app.use('/api/users', authRouter);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -14,7 +21,7 @@ app.get('/api/health', (req, res) => {
     status: 'healthy',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
   });
 });
 
@@ -25,12 +32,12 @@ app.get('/api/db-check', async (req, res) => {
     res.status(200).json({
       status: 'connected',
       database: 'PostgreSQL',
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
   } catch (error) {
     res.status(503).json({
       status: 'disconnected',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
@@ -42,8 +49,9 @@ app.get('/', (req, res) => {
     version: '1.0.0',
     endpoints: {
       health: '/api/health',
-      dbCheck: '/api/db-check'
-    }
+      dbCheck: '/api/db-check',
+      auth: '/api/auth',
+    },
   });
 });
 
@@ -51,18 +59,25 @@ app.get('/', (req, res) => {
 app.use((req, res) => {
   res.status(404).json({
     error: 'Not Found',
-    path: req.path
+    path: req.path,
   });
 });
 
 // Error handler
-app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error('Error:', err);
-  res.status(500).json({
-    error: 'Internal Server Error',
-    message: process.env.NODE_ENV === 'development' ? err.message : undefined
-  });
-});
+app.use(
+  (
+    err: Error,
+    req: express.Request,
+    res: express.Response,
+    _next: express.NextFunction
+  ) => {
+    console.error('Error:', err);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: process.env.NODE_ENV === 'development' ? err.message : undefined,
+    });
+  }
+);
 
 // Start server
 const server = app.listen(PORT, () => {

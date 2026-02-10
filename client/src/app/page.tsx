@@ -1,51 +1,134 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import axios from 'axios';
+import { useState } from 'react';
+import { AuthProvider, useAuth } from '@/contexts/AuthContext';
+import AuthModal from '@/components/auth/AuthModal';
+import Navbar from '@/components/landing/Navbar';
+import Hero from '@/components/landing/Hero';
+import Features from '@/components/landing/Features';
+import HowItWorks from '@/components/landing/HowItWorks';
+import CTASection from '@/components/landing/CTASection';
+import Footer from '@/components/landing/Footer';
 
-export default function Home() {
-  const [backendStatus, setBackendStatus] = useState('checking...');
-  const [dbStatus, setDbStatus] = useState('checking...');
+function LandingPageContent() {
+  const { user, login, register, logout } = useAuth();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<'login' | 'register'>('login');
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(false);
 
-  useEffect(() => {
-    const checkHealth = async () => {
-      try {
-        const healthRes = await axios.get('http://localhost:3001/api/health');
-        setBackendStatus('✓ Connected');
-      } catch {
-        setBackendStatus('✗ Backend not responding');
-      }
+  const openLogin = () => {
+    setAuthError(null);
+    setModalMode('login');
+    setModalOpen(true);
+  };
 
-      try {
-        const dbRes = await axios.get('http://localhost:3001/api/db-check');
-        setDbStatus('✓ Connected');
-      } catch {
-        setDbStatus('✗ Database not responding');
-      }
-    };
+  const openRegister = () => {
+    setAuthError(null);
+    setModalMode('register');
+    setModalOpen(true);
+  };
 
-    checkHealth();
-  }, []);
+  const handleLogin = async (email: string, password: string) => {
+    setAuthError(null);
+    setAuthLoading(true);
+    try {
+      await login(email, password);
+      setModalOpen(false);
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { error?: { message?: string } } } };
+      setAuthError(
+        error.response?.data?.error?.message || 'Login failed. Please try again.'
+      );
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleRegister = async (
+    name: string,
+    email: string,
+    password: string
+  ) => {
+    setAuthError(null);
+    setAuthLoading(true);
+    try {
+      await register(name, email, password);
+      setModalOpen(false);
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { error?: { message?: string } } } };
+      setAuthError(
+        error.response?.data?.error?.message ||
+          'Registration failed. Please try again.'
+      );
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  // If user is logged in, show a simple authenticated state
+  if (user) {
+    return (
+      <div className="min-h-screen bg-base">
+        <nav className="bg-surface shadow-sm sticky top-0 z-50">
+          <div className="max-w-[1200px] mx-auto flex justify-between items-center px-6 py-4">
+            <div className="font-heading text-xl font-bold text-sage">
+              TaskTogether
+            </div>
+            <div className="flex items-center gap-4">
+              <span className="text-text-secondary">
+                Welcome, {user.name}
+              </span>
+              <button
+                onClick={logout}
+                className="px-4 py-2 rounded-sm border border-divider text-text-primary font-medium transition-all hover:bg-base hover:border-sage"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        </nav>
+        <div className="max-w-[1200px] mx-auto px-6 py-12 text-center">
+          <h1 className="text-3xl font-bold mb-4">
+            Welcome to TaskTogether
+          </h1>
+          <p className="text-text-secondary text-lg">
+            Dashboard coming soon. You are logged in as {user.email}.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-slate-900 to-slate-800 p-4">
-      <div className="max-w-md w-full bg-slate-700 rounded-lg p-8">
-        <h1 className="text-3xl font-bold text-white mb-2">Task Together</h1>
-        <p className="text-slate-300 mb-8">Manage shared living without the drama</p>
+    <div className="min-h-screen bg-base">
+      <Navbar onLoginClick={openLogin} onRegisterClick={openRegister} />
+      <Hero onGetStarted={openRegister} />
+      <Features />
+      <HowItWorks />
+      <CTASection onGetStarted={openRegister} />
+      <Footer />
+      <AuthModal
+        isOpen={modalOpen}
+        mode={modalMode}
+        onClose={() => setModalOpen(false)}
+        onSwitchMode={() => {
+          setAuthError(null);
+          setModalMode(modalMode === 'login' ? 'register' : 'login');
+        }}
+        onLogin={handleLogin}
+        onRegister={handleRegister}
+        error={authError}
+        loading={authLoading}
+      />
+    </div>
+  );
+}
 
-        <div className="space-y-4">
-          <div className="bg-slate-600 rounded p-4">
-            <h2 className="text-sm font-semibold text-slate-200 mb-2">Backend Status</h2>
-            <p className="text-lg text-white font-mono">{backendStatus}</p>
-          </div>
-
-          <div className="bg-slate-600 rounded p-4">
-            <h2 className="text-sm font-semibold text-slate-200 mb-2">Database Status</h2>
-            <p className="text-lg text-white font-mono">{dbStatus}</p>
-          </div>
-        </div>
-
-      </div>
-    </main>
+export default function Home() {
+  return (
+    <AuthProvider>
+      <LandingPageContent />
+    </AuthProvider>
   );
 }
