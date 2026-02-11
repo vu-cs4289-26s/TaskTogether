@@ -107,6 +107,7 @@ model Household {
   announcements  Announcement[]
   discussions    DiscussionThread[]
   activities     QualityTimeActivity[]
+  invites        HouseholdInvite[]
 
   @@index([ownerId])
 }
@@ -125,6 +126,21 @@ model HouseholdMember {
   @@unique([userId, householdId])
   @@index([userId])
   @@index([householdId])
+}
+
+model HouseholdInvite {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdAt   DateTime @default(now())
+
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@index([code])
+  @@index([householdId])
+  @@index([expiresAt])
 }
 
 // ============================================
