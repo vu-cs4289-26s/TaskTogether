@@ -56,22 +56,7 @@ router.post('/', async (req: AuthenticatedRequest, res: Response): Promise<void>
     return;
   }
 
-  // Check if user already belongs to a household
-  const user = await prisma.user.findUnique({
-    where: { id: req.userId },
-    select: { householdId: true },
-  });
 
-  if (user?.householdId) {
-    res.status(409).json({
-      status: 'error',
-      error: {
-        code: 'HOUSEHOLD_ALREADY_MEMBER',
-        message: 'You are already a member of a household. Leave your current household first.',
-      },
-    });
-    return;
-  }
 
   // Create household and set user as owner + member in a transaction
   const household = await prisma.$transaction(async (tx) => {
