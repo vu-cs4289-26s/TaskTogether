@@ -13,14 +13,12 @@ function generateToken(userId: string): string {
   return jwt.sign({ userId }, JWT_SECRET, { expiresIn: '7d' });
 }
 
-function sanitizeUser(user: { id: string; email: string; name: string; avatar: string | null; role: string; householdId: string | null }) {
+function sanitizeUser(user: { id: string; email: string; name: string; avatar: string | null }) {
   return {
     id: user.id,
     email: user.email,
     name: user.name,
     avatar: user.avatar,
-    role: user.role,
-    householdId: user.householdId,
   };
 }
 

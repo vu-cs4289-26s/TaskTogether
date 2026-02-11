@@ -51,38 +51,35 @@ model User {
   name          String
   password      String   // bcrypt hashed
   avatar        String?
-  role          Role     @default(MEMBER)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  // Household relationship
-  householdId   String?
-  household     Household? @relation("HouseholdMembers", fields: [householdId], references: [id], onDelete: Cascade)
-  
-  // Ownership
-  ownedHousehold Household? @relation("HouseholdOwner")
-  
+  // Household memberships (many-to-many via join table)
+  householdMemberships HouseholdMember[]
+
+  // Ownership (a user can own multiple households)
+  ownedHouseholds Household[] @relation("HouseholdOwner")
+
   // Tasks
   createdTasks       Task[]           @relation("TaskCreator")
   assignedTasks      TaskAssignment[]
   completedTasks     TaskCompletion[]
-  
+
   // Issues
   reportedIssues     Issue[]          @relation("IssueReporter")
   issueComments      IssueComment[]
-  
+
   // Communication
   announcements      Announcement[]
   discussionThreads  DiscussionThread[]
   discussionReplies  DiscussionReply[]
   mentions           Mention[]        @relation("MentionedUser")
   createdMentions    Mention[]        @relation("MentionCreator")
-  
+
   // Quality Time
   activityParticipants ActivityParticipant[]
   activityCheckIns     ActivityCheckIn[]
 
-  @@index([householdId])
   @@index([email])
 }
 
@@ -96,13 +93,13 @@ model Household {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Owner
-  ownerId   String   @unique
+  // Owner (a user can own multiple households)
+  ownerId   String
   owner     User     @relation("HouseholdOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  
-  // Members
-  members   User[]   @relation("HouseholdMembers")
-  
+
+  // Members (many-to-many via join table)
+  members   HouseholdMember[]
+
   // Household data
   tasks          Task[]
   issues         Issue[]
@@ -112,6 +109,22 @@ model Household {
   activities     QualityTimeActivity[]
 
   @@index([ownerId])
+}
+
+model HouseholdMember {
+  id        String   @id @default(uuid())
+  role      Role     @default(MEMBER)
+  createdAt DateTime @default(now())
+
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, householdId])
+  @@index([userId])
+  @@index([householdId])
 }
 
 // ============================================
