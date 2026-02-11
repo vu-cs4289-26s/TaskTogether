@@ -66,38 +66,12 @@ function LandingPageContent() {
     }
   };
 
-  // If user is logged in, show a simple authenticated state
+  // If user is logged in, redirect to households
   if (user) {
-    return (
-      <div className="min-h-screen bg-base">
-        <nav className="bg-surface shadow-sm sticky top-0 z-50">
-          <div className="max-w-[1200px] mx-auto flex justify-between items-center px-6 py-4">
-            <div className="font-heading text-xl font-bold text-sage">
-              TaskTogether
-            </div>
-            <div className="flex items-center gap-4">
-              <span className="text-text-secondary">
-                Welcome, {user.name}
-              </span>
-              <button
-                onClick={logout}
-                className="px-4 py-2 rounded-sm border border-divider text-text-primary font-medium transition-all hover:bg-base hover:border-sage"
-              >
-                Logout
-              </button>
-            </div>
-          </div>
-        </nav>
-        <div className="max-w-[1200px] mx-auto px-6 py-12 text-center">
-          <h1 className="text-3xl font-bold mb-4">
-            Welcome to TaskTogether
-          </h1>
-          <p className="text-text-secondary text-lg">
-            Dashboard coming soon. You are logged in as {user.email}.
-          </p>
-        </div>
-      </div>
-    );
+    if (typeof window !== 'undefined') {
+      window.location.href = '/households';
+    }
+    return null;
   }
 
   return (
