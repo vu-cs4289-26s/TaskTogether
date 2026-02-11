@@ -3,7 +3,6 @@ import { PrismaClient } from '@prisma/client';
 import crypto from 'crypto';
 import { authenticate } from '../middleware/auth.js';
 import {
-  requireHousehold,
   requireHouseholdMember,
   requireOwner,
 } from '../middleware/authorization.js';
@@ -16,25 +15,35 @@ const prisma = new PrismaClient();
 router.use(authenticate);
 
 // ============================================
-// GET /api/households — Get current user's household
+// GET /api/households — Get all households the user belongs to
 // ============================================
 router.get(
   '/',
-  requireHousehold,
   async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-    const household = await prisma.household.findUnique({
-      where: { id: req.householdId },
+    const memberships = await prisma.householdMember.findMany({
+      where: { userId: req.userId },
       include: {
-        owner: { select: { id: true, name: true, email: true, avatar: true } },
-        members: {
-          select: { id: true, name: true, email: true, avatar: true, role: true },
+        household: {
+          include: {
+            owner: { select: { id: true, name: true, email: true, avatar: true } },
+            members: {
+              include: {
+                user: { select: { id: true, name: true, email: true, avatar: true } },
+              },
+            },
+          },
         },
       },
     });
 
+    const households = memberships.map((m) => ({
+      ...m.household,
+      myRole: m.role,
+    }));
+
     res.json({
       status: 'success',
-      data: household,
+      data: households,
     });
   }
 );
@@ -56,9 +65,7 @@ router.post('/', async (req: AuthenticatedRequest, res: Response): Promise<void>
     return;
   }
 
-
-
-  // Create household and set user as owner + member in a transaction
+  // Create household and add the creator as an ADMIN member in a transaction
   const household = await prisma.$transaction(async (tx) => {
     const newHousehold = await tx.household.create({
       data: {
@@ -67,10 +74,9 @@ router.post('/', async (req: AuthenticatedRequest, res: Response): Promise<void>
       },
     });
 
-    // Add the creator as a member with ADMIN role
-    await tx.user.update({
-      where: { id: req.userId },
+    await tx.householdMember.create({
       data: {
+        userId: req.userId!,
         householdId: newHousehold.id,
         role: 'ADMIN',
       },
@@ -81,7 +87,9 @@ router.post('/', async (req: AuthenticatedRequest, res: Response): Promise<void>
       include: {
         owner: { select: { id: true, name: true, email: true, avatar: true } },
         members: {
-          select: { id: true, name: true, email: true, avatar: true, role: true },
+          include: {
+            user: { select: { id: true, name: true, email: true, avatar: true } },
+          },
         },
       },
     });
@@ -120,7 +128,9 @@ router.put(
       include: {
         owner: { select: { id: true, name: true, email: true, avatar: true } },
         members: {
-          select: { id: true, name: true, email: true, avatar: true, role: true },
+          include: {
+            user: { select: { id: true, name: true, email: true, avatar: true } },
+          },
         },
       },
     });
@@ -139,21 +149,29 @@ router.get(
   '/:id/members',
   requireHouseholdMember,
   async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-    const members = await prisma.user.findMany({
+    const members = await prisma.householdMember.findMany({
       where: { householdId: req.householdId },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        avatar: true,
-        role: true,
-        createdAt: true,
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            avatar: true,
+          },
+        },
       },
     });
 
+    const data = members.map((m) => ({
+      ...m.user,
+      role: m.role,
+      joinedAt: m.createdAt,
+    }));
+
     res.json({
       status: 'success',
-      data: members,
+      data,
     });
   }
 );
@@ -167,7 +185,6 @@ router.delete(
   async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     const { id, userId: targetUserId } = req.params;
 
-    // isHouseholdOwner is populated by requireHouseholdMember middleware
     const isOwner = req.isHouseholdOwner!;
     const isSelf = targetUserId === req.userId;
 
@@ -182,7 +199,7 @@ router.delete(
       return;
     }
 
-    // Owner cannot remove themselves (must delete household instead)
+    // Owner cannot remove themselves (must delete household or transfer ownership)
     if (isOwner && isSelf) {
       res.status(400).json({
         status: 'error',
@@ -196,12 +213,16 @@ router.delete(
     }
 
     // Verify target user is actually in this household
-    const targetUser = await prisma.user.findUnique({
-      where: { id: targetUserId },
-      select: { householdId: true },
+    const membership = await prisma.householdMember.findUnique({
+      where: {
+        userId_householdId: {
+          userId: targetUserId,
+          householdId: id,
+        },
+      },
     });
 
-    if (!targetUser || targetUser.householdId !== id) {
+    if (!membership) {
       res.status(404).json({
         status: 'error',
         error: {
@@ -212,12 +233,8 @@ router.delete(
       return;
     }
 
-    await prisma.user.update({
-      where: { id: targetUserId },
-      data: {
-        householdId: null,
-        role: 'MEMBER',
-      },
+    await prisma.householdMember.delete({
+      where: { id: membership.id },
     });
 
     res.status(204).send();
@@ -286,28 +303,31 @@ router.post(
       return;
     }
 
-    // Check if user already belongs to a household
-    const user = await prisma.user.findUnique({
-      where: { id: req.userId },
-      select: { householdId: true },
+    // Check if user is already a member of this specific household
+    const existingMembership = await prisma.householdMember.findUnique({
+      where: {
+        userId_householdId: {
+          userId: req.userId!,
+          householdId: invite.householdId,
+        },
+      },
     });
 
-    if (user?.householdId) {
+    if (existingMembership) {
       res.status(409).json({
         status: 'error',
         error: {
           code: 'HOUSEHOLD_ALREADY_MEMBER',
-          message:
-            'You are already a member of a household. Leave your current household first.',
+          message: 'You are already a member of this household.',
         },
       });
       return;
     }
 
     // Join the household
-    await prisma.user.update({
-      where: { id: req.userId },
+    await prisma.householdMember.create({
       data: {
+        userId: req.userId!,
         householdId: invite.householdId,
         role: 'MEMBER',
       },
@@ -318,7 +338,9 @@ router.post(
       include: {
         owner: { select: { id: true, name: true, email: true, avatar: true } },
         members: {
-          select: { id: true, name: true, email: true, avatar: true, role: true },
+          include: {
+            user: { select: { id: true, name: true, email: true, avatar: true } },
+          },
         },
       },
     });

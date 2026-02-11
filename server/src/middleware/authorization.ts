@@ -5,57 +5,11 @@ import { AuthenticatedRequest } from '../types/index.js';
 const prisma = new PrismaClient();
 
 /**
- * requireHousehold
- *
- * Looks up the authenticated user's household membership and attaches
- * `req.householdId` and `req.userRole` to the request.
- *
- * Returns 404 if the user is not in any household.
- *
- * Use AFTER `authenticate` middleware.
- * Use BEFORE any route that needs household context.
- */
-export function requireHousehold(
-  req: AuthenticatedRequest,
-  res: Response,
-  next: NextFunction
-): void {
-  prisma.user
-    .findUnique({
-      where: { id: req.userId },
-      select: {
-        householdId: true,
-        role: true,
-        household: { select: { ownerId: true } },
-      },
-    })
-    .then((user) => {
-      if (!user || !user.householdId) {
-        res.status(404).json({
-          status: 'error',
-          error: {
-            code: 'HOUSEHOLD_NOT_FOUND',
-            message: 'You are not a member of any household',
-          },
-        });
-        return;
-      }
-
-      req.householdId = user.householdId;
-      req.userRole = user.role;
-      req.isHouseholdOwner = user.household?.ownerId === req.userId;
-      next();
-    })
-    .catch((err) => {
-      next(err);
-    });
-}
-
-/**
  * requireHouseholdMember
  *
  * Validates that the authenticated user belongs to the household specified
- * by `:id` in the route params. Attaches `req.householdId` and `req.userRole`.
+ * by `:id` in the route params. Attaches `req.householdId`, `req.userRole`,
+ * and `req.isHouseholdOwner` to the request.
  *
  * Returns 403 if the user is not a member of that specific household.
  *
@@ -70,16 +24,21 @@ export function requireHouseholdMember(
   const targetHouseholdId = req.params.id;
 
   Promise.all([
-    prisma.user.findUnique({
-      where: { id: req.userId },
-      select: { householdId: true, role: true },
+    prisma.householdMember.findUnique({
+      where: {
+        userId_householdId: {
+          userId: req.userId!,
+          householdId: targetHouseholdId,
+        },
+      },
+      select: { role: true },
     }),
     prisma.household.findUnique({
       where: { id: targetHouseholdId },
       select: { ownerId: true },
     }),
   ])
-    .then(([user, household]) => {
+    .then(([membership, household]) => {
       if (!household) {
         res.status(404).json({
           status: 'error',
@@ -91,7 +50,7 @@ export function requireHouseholdMember(
         return;
       }
 
-      if (!user || user.householdId !== targetHouseholdId) {
+      if (!membership) {
         res.status(403).json({
           status: 'error',
           error: {
@@ -102,8 +61,8 @@ export function requireHouseholdMember(
         return;
       }
 
-      req.householdId = user.householdId;
-      req.userRole = user.role;
+      req.householdId = targetHouseholdId;
+      req.userRole = membership.role;
       req.isHouseholdOwner = household.ownerId === req.userId;
       next();
     })
@@ -115,8 +74,8 @@ export function requireHouseholdMember(
 /**
  * requireAdmin
  *
- * Checks that `req.userRole` is ADMIN. Must be used AFTER `requireHousehold`
- * or `requireHouseholdMember` (which populate `req.userRole`).
+ * Checks that `req.userRole` is ADMIN. Must be used AFTER `requireHouseholdMember`
+ * (which populates `req.userRole`).
  *
  * Returns 403 if the user is not an ADMIN.
  */
@@ -184,7 +143,6 @@ export function requireOwner(
         return;
       }
 
-      // Also populate householdId for downstream use
       req.householdId = targetHouseholdId;
       next();
     })
