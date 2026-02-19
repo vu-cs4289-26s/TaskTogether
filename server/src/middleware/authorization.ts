@@ -6,13 +6,13 @@ import prisma from '../lib/prisma.js';
  * requireHouseholdMember
  *
  * Validates that the authenticated user belongs to the household specified
- * by `:id` in the route params. Attaches `req.householdId`, `req.userRole`,
- * and `req.isHouseholdOwner` to the request.
+ * by `:id` in the route params. Attaches `req.householdId` and `req.userRole`
+ * to the request.
  *
- * Returns 403 if the user is not a member of that specific household.
+ * Returns 404 if the household does not exist.
+ * Returns 403 if the user is not a member of that household.
  *
  * Use AFTER `authenticate` middleware.
- * Use on routes like `/api/households/:id/members`.
  */
 export function requireHouseholdMember(
   req: AuthenticatedRequest,
@@ -21,8 +21,8 @@ export function requireHouseholdMember(
 ): void {
   const targetHouseholdId = req.params.id;
 
-  Promise.all([
-    prisma.householdMember.findUnique({
+  prisma.householdMember
+    .findUnique({
       where: {
         userId_householdId: {
           userId: req.userId!,
@@ -30,38 +30,35 @@ export function requireHouseholdMember(
         },
       },
       select: { role: true },
-    }),
-    prisma.household.findUnique({
-      where: { id: targetHouseholdId },
-      select: { ownerId: true },
-    }),
-  ])
-    .then(([membership, household]) => {
-      if (!household) {
-        res.status(404).json({
-          status: 'error',
-          error: {
-            code: 'HOUSEHOLD_NOT_FOUND',
-            message: 'Household not found',
-          },
-        });
-        return;
-      }
-
+    })
+    .then((membership) => {
       if (!membership) {
-        res.status(403).json({
-          status: 'error',
-          error: {
-            code: 'HOUSEHOLD_UNAUTHORIZED',
-            message: 'You are not a member of this household',
-          },
-        });
-        return;
+        // Distinguish "household doesn't exist" from "user not a member"
+        return prisma.household
+          .findUnique({ where: { id: targetHouseholdId }, select: { id: true } })
+          .then((household) => {
+            if (!household) {
+              res.status(404).json({
+                status: 'error',
+                error: {
+                  code: 'HOUSEHOLD_NOT_FOUND',
+                  message: 'Household not found',
+                },
+              });
+            } else {
+              res.status(403).json({
+                status: 'error',
+                error: {
+                  code: 'HOUSEHOLD_UNAUTHORIZED',
+                  message: 'You are not a member of this household',
+                },
+              });
+            }
+          });
       }
 
       req.householdId = targetHouseholdId;
       req.userRole = membership.role;
-      req.isHouseholdOwner = household.ownerId === req.userId;
       next();
     })
     .catch((err) => {
@@ -94,57 +91,4 @@ export function requireAdmin(
   }
 
   next();
-}
-
-/**
- * requireOwner
- *
- * Checks that the authenticated user is the owner of the household specified
- * by `:id` in the route params.
- *
- * Returns 403 if the user is not the owner.
- *
- * Use AFTER `authenticate` middleware.
- */
-export function requireOwner(
-  req: AuthenticatedRequest,
-  res: Response,
-  next: NextFunction
-): void {
-  const targetHouseholdId = req.params.id;
-
-  prisma.household
-    .findUnique({
-      where: { id: targetHouseholdId },
-      select: { ownerId: true },
-    })
-    .then((household) => {
-      if (!household) {
-        res.status(404).json({
-          status: 'error',
-          error: {
-            code: 'HOUSEHOLD_NOT_FOUND',
-            message: 'Household not found',
-          },
-        });
-        return;
-      }
-
-      if (household.ownerId !== req.userId) {
-        res.status(403).json({
-          status: 'error',
-          error: {
-            code: 'HOUSEHOLD_UNAUTHORIZED',
-            message: 'Only the household owner can perform this action',
-          },
-        });
-        return;
-      }
-
-      req.householdId = targetHouseholdId;
-      next();
-    })
-    .catch((err) => {
-      next(err);
-    });
 }

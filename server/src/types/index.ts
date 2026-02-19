@@ -7,8 +7,6 @@ export interface AuthenticatedRequest extends Request {
   householdId?: string;
   /** Populated by requireHouseholdMember middleware (per-household role from HouseholdMember) */
   userRole?: Role;
-  /** Populated by requireHouseholdMember middleware — true if user is the household owner */
-  isHouseholdOwner?: boolean;
 }
 
 export interface ApiResponse<T = unknown> {

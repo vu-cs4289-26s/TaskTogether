@@ -4,7 +4,6 @@ import { authenticate } from '../middleware/auth.js';
 import {
   requireHouseholdMember,
   requireAdmin,
-  requireOwner,
 } from '../middleware/authorization.js';
 import { AuthenticatedRequest } from '../types/index.js';
 import prisma from '../lib/prisma.js';
@@ -17,9 +16,8 @@ router.use(authenticate);
 // Reusable select for user fields (never leak password)
 const userSelect = { id: true, name: true, email: true, avatar: true } as const;
 
-// Reusable include for household with owner + members
+// Reusable include for household with members
 const householdWithMembers = {
-  owner: { select: userSelect },
   members: {
     include: {
       user: { select: userSelect },
@@ -122,6 +120,7 @@ router.get(
 
 // ============================================
 // POST /api/households — Create a new household
+// Creator is automatically added as ADMIN.
 // ============================================
 router.post(
   '/',
@@ -153,7 +152,6 @@ router.post(
         const newHousehold = await tx.household.create({
           data: {
             name: name.trim(),
-            ownerId: req.userId!,
           },
         });
 
@@ -186,11 +184,12 @@ router.post(
 );
 
 // ============================================
-// PUT /api/households/:id — Update household info (owner only)
+// PUT /api/households/:id — Update household info (any admin)
 // ============================================
 router.put(
   '/:id',
-  requireOwner,
+  requireHouseholdMember,
+  requireAdmin,
   async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
       const { name } = req.body;
@@ -235,95 +234,120 @@ router.put(
 );
 
 // ============================================
-// DELETE /api/households/:id — Delete household (owner only)
+// DELETE /api/households/:id — Consensual deletion (all admins must vote)
+// Each admin calling this casts a vote. When all admins have voted, the
+// household is deleted. Voting is idempotent — calling twice has no effect.
 // ============================================
 router.delete(
   '/:id',
-  requireOwner,
+  requireHouseholdMember,
+  requireAdmin,
   async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
-      await prisma.household.delete({
-        where: { id: req.householdId },
+      const householdId = req.householdId!;
+      const voterId = req.userId!;
+
+      // Fetch all admins in this household
+      const adminMembers = await prisma.householdMember.findMany({
+        where: { householdId, role: 'ADMIN' },
+        select: { userId: true },
       });
 
-      res.status(204).send();
+      // Record this admin's vote (upsert — idempotent)
+      await prisma.householdDeleteVote.upsert({
+        where: { householdId_voterId: { householdId, voterId } },
+        create: { householdId, voterId },
+        update: {},
+      });
+
+      // Count votes so far
+      const voteCount = await prisma.householdDeleteVote.count({
+        where: { householdId },
+      });
+
+      const adminCount = adminMembers.length;
+
+      if (voteCount >= adminCount) {
+        // All admins have voted — delete household (cascades all related data)
+        await prisma.household.delete({ where: { id: householdId } });
+        res.status(204).send();
+      } else {
+        // Waiting on remaining admins
+        res.status(202).json({
+          status: 'success',
+          data: {
+            message: 'Your vote to delete this household has been recorded',
+            votesReceived: voteCount,
+            votesRequired: adminCount,
+          },
+        });
+      }
     } catch (err) {
       console.error('DELETE /api/households/:id error:', err);
       res.status(500).json({
         status: 'error',
-        error: { code: 'INTERNAL_ERROR', message: 'Failed to delete household' },
+        error: { code: 'INTERNAL_ERROR', message: 'Failed to process delete vote' },
       });
     }
   }
 );
 
 // ============================================
-// PUT /api/households/:id/transfer — Transfer ownership (owner only)
+// GET /api/households/:id/delete-vote — Check current delete vote status
 // ============================================
-router.put(
-  '/:id/transfer',
-  requireOwner,
+router.get(
+  '/:id/delete-vote',
+  requireHouseholdMember,
+  requireAdmin,
   async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
-      const { newOwnerId } = req.body;
+      const householdId = req.householdId!;
 
-      if (!newOwnerId || typeof newOwnerId !== 'string') {
-        res.status(400).json({
-          status: 'error',
-          error: { code: 'VALIDATION_ERROR', message: 'newOwnerId is required' },
-        });
-        return;
-      }
-
-      // Verify the new owner is a member of this household
-      const membership = await prisma.householdMember.findUnique({
-        where: {
-          userId_householdId: {
-            userId: newOwnerId,
-            householdId: req.householdId!,
-          },
-        },
-      });
-
-      if (!membership) {
-        res.status(404).json({
-          status: 'error',
-          error: {
-            code: 'USER_NOT_FOUND',
-            message: 'Target user is not a member of this household',
-          },
-        });
-        return;
-      }
-
-      // Transfer ownership and promote new owner to ADMIN in a transaction
-      const updated = await prisma.$transaction(async (tx) => {
-        await tx.household.update({
-          where: { id: req.householdId! },
-          data: { ownerId: newOwnerId },
-        });
-
-        // Promote the new owner to ADMIN if they aren't already
-        await tx.householdMember.update({
-          where: { id: membership.id },
-          data: { role: 'ADMIN' },
-        });
-
-        return tx.household.findUnique({
-          where: { id: req.householdId! },
-          include: householdWithMembers,
-        });
-      });
+      const [adminCount, votes] = await Promise.all([
+        prisma.householdMember.count({ where: { householdId, role: 'ADMIN' } }),
+        prisma.householdDeleteVote.findMany({
+          where: { householdId },
+          select: { voterId: true, createdAt: true },
+        }),
+      ]);
 
       res.json({
         status: 'success',
-        data: updated,
+        data: {
+          votesReceived: votes.length,
+          votesRequired: adminCount,
+          myVote: votes.some((v) => v.voterId === req.userId),
+          votes,
+        },
       });
     } catch (err) {
-      console.error('PUT /api/households/:id/transfer error:', err);
+      console.error('GET /api/households/:id/delete-vote error:', err);
       res.status(500).json({
         status: 'error',
-        error: { code: 'INTERNAL_ERROR', message: 'Failed to transfer ownership' },
+        error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch delete vote status' },
+      });
+    }
+  }
+);
+
+// ============================================
+// DELETE /api/households/:id/delete-vote — Retract your delete vote
+// ============================================
+router.delete(
+  '/:id/delete-vote',
+  requireHouseholdMember,
+  requireAdmin,
+  async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      await prisma.householdDeleteVote.deleteMany({
+        where: { householdId: req.householdId!, voterId: req.userId! },
+      });
+      res.status(204).send();
+    } catch (err) {
+      console.error('DELETE /api/households/:id/delete-vote error:', err);
+      res.status(500).json({
+        status: 'error',
+        error: { code: 'INTERNAL_ERROR', message: 'Failed to retract delete vote' },
       });
     }
   }
@@ -344,15 +368,9 @@ router.get(
         },
       });
 
-      const household = await prisma.household.findUnique({
-        where: { id: req.householdId },
-        select: { ownerId: true },
-      });
-
       const data = members.map((m) => ({
         ...m.user,
         role: m.role,
-        isOwner: m.userId === household?.ownerId,
         joinedAt: m.createdAt,
       }));
 
@@ -371,7 +389,8 @@ router.get(
 );
 
 // ============================================
-// PUT /api/households/:id/members/:userId/role — Update member role (admin only)
+// PUT /api/households/:id/members/:userId/role — Promote member to admin (admin only)
+// Demotion is not permitted — once admin, always admin.
 // ============================================
 router.put(
   '/:id/members/:userId/role',
@@ -382,27 +401,23 @@ router.put(
       const { userId: targetUserId } = req.params;
       const { role } = req.body;
 
-      if (!role || !['ADMIN', 'MEMBER'].includes(role)) {
+      // Only promotion to ADMIN is allowed
+      if (role !== 'ADMIN') {
         res.status(400).json({
           status: 'error',
-          error: { code: 'VALIDATION_ERROR', message: 'Role must be ADMIN or MEMBER' },
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Role changes are only allowed for promotion to ADMIN. Demotion is not permitted.',
+          },
         });
         return;
       }
 
-      // Cannot change the owner's role
-      const household = await prisma.household.findUnique({
-        where: { id: req.householdId },
-        select: { ownerId: true },
-      });
-
-      if (targetUserId === household?.ownerId) {
+      // Cannot change your own role
+      if (targetUserId === req.userId) {
         res.status(400).json({
           status: 'error',
-          error: {
-            code: 'CANNOT_CHANGE_OWNER_ROLE',
-            message: 'Cannot change the household owner\'s role. Transfer ownership instead.',
-          },
+          error: { code: 'VALIDATION_ERROR', message: 'You cannot change your own role' },
         });
         return;
       }
@@ -424,9 +439,18 @@ router.put(
         return;
       }
 
+      // Already an admin — idempotent response
+      if (membership.role === 'ADMIN') {
+        res.json({
+          status: 'success',
+          data: { message: 'User is already an ADMIN' },
+        });
+        return;
+      }
+
       const updated = await prisma.householdMember.update({
         where: { id: membership.id },
-        data: { role },
+        data: { role: 'ADMIN' },
         include: {
           user: { select: userSelect },
         },
@@ -451,67 +475,83 @@ router.put(
 );
 
 // ============================================
-// DELETE /api/households/:id/members/:userId — Remove member
+// DELETE /api/households/:id/members/:userId — Remove member or leave household
+//
+// Rules:
+// - Any admin can remove a MEMBER; admins cannot forcibly remove other admins.
+// - Any user can leave themselves.
+// - An admin trying to leave must ensure at least one other admin remains.
 // ============================================
 router.delete(
   '/:id/members/:userId',
   requireHouseholdMember,
   async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
-      const { id, userId: targetUserId } = req.params;
-
-      const isOwner = req.isHouseholdOwner!;
+      const { userId: targetUserId } = req.params;
+      const householdId = req.householdId!;
       const isSelf = targetUserId === req.userId;
+      const requesterIsAdmin = req.userRole === 'ADMIN';
 
-      if (!isOwner && !isSelf) {
-        res.status(403).json({
-          status: 'error',
-          error: {
-            code: 'HOUSEHOLD_UNAUTHORIZED',
-            message: 'Only the household owner can remove other members',
-          },
-        });
-        return;
-      }
-
-      // Owner cannot remove themselves (must delete household or transfer ownership)
-      if (isOwner && isSelf) {
-        res.status(400).json({
-          status: 'error',
-          error: {
-            code: 'HOUSEHOLD_OWNER_CANNOT_LEAVE',
-            message:
-              'The household owner cannot leave. Transfer ownership or delete the household.',
-          },
-        });
-        return;
-      }
-
-      // Verify target user is actually in this household
-      const membership = await prisma.householdMember.findUnique({
+      // Find the target membership to understand their role
+      const targetMembership = await prisma.householdMember.findUnique({
         where: {
-          userId_householdId: {
-            userId: targetUserId,
-            householdId: id,
-          },
+          userId_householdId: { userId: targetUserId, householdId },
         },
       });
 
-      if (!membership) {
+      if (!targetMembership) {
         res.status(404).json({
           status: 'error',
-          error: {
-            code: 'USER_NOT_FOUND',
-            message: 'User is not a member of this household',
-          },
+          error: { code: 'USER_NOT_FOUND', message: 'User is not a member of this household' },
         });
         return;
       }
 
-      await prisma.householdMember.delete({
-        where: { id: membership.id },
-      });
+      if (!isSelf) {
+        // Trying to remove someone else — must be an admin
+        if (!requesterIsAdmin) {
+          res.status(403).json({
+            status: 'error',
+            error: { code: 'ADMIN_REQUIRED', message: 'Only admins can remove other members' },
+          });
+          return;
+        }
 
+        // Admins cannot forcibly remove other admins
+        if (targetMembership.role === 'ADMIN') {
+          res.status(403).json({
+            status: 'error',
+            error: {
+              code: 'CANNOT_REMOVE_ADMIN',
+              message: 'Admins cannot be removed by other admins. They must leave voluntarily.',
+            },
+          });
+          return;
+        }
+        // Admin removing a MEMBER — allowed, fall through
+      } else {
+        // Leaving yourself
+        if (requesterIsAdmin) {
+          // Must ensure at least one other admin remains
+          const otherAdminCount = await prisma.householdMember.count({
+            where: { householdId, role: 'ADMIN', userId: { not: req.userId } },
+          });
+
+          if (otherAdminCount === 0) {
+            res.status(400).json({
+              status: 'error',
+              error: {
+                code: 'LAST_ADMIN_CANNOT_LEAVE',
+                message: 'You are the last admin. Promote another member to admin before leaving.',
+              },
+            });
+            return;
+          }
+        }
+        // MEMBER leaving — always allowed, fall through
+      }
+
+      await prisma.householdMember.delete({ where: { id: targetMembership.id } });
       res.status(204).send();
     } catch (err) {
       console.error('DELETE /api/households/:id/members/:userId error:', err);
@@ -524,12 +564,13 @@ router.delete(
 );
 
 // ============================================
-// POST /api/households/:id/invites — Generate invite code (owner only)
+// POST /api/households/:id/invites — Generate invite code (any admin)
 // Persisted to database instead of in-memory
 // ============================================
 router.post(
   '/:id/invites',
-  requireOwner,
+  requireHouseholdMember,
+  requireAdmin,
   async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
       // Generate a random 8-character invite code
