@@ -3,20 +3,42 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { LogOut, Settings, User } from 'lucide-react';
-import { useAuth } from '@/contexts/AuthContext';
-import { getInitials } from '@/types/households';
+import { useCurrentUser } from '@/hook/currentUser';
+import { clearMockLogin } from '@/lib/mockAuth';
 
-export default function AppNavbar() {
+interface AppNavbarProps {
+  userName?: string;
+  userEmail?: string;
+  userInitials?: string;
+}
+
+function computeInitials(name?: string) {
+  const trimmed = (name ?? '').trim();
+  if (!trimmed) return '??';
+  return trimmed
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((s) => s[0]!.toUpperCase())
+    .join('');
+}
+
+export default function AppNavbar(props: AppNavbarProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, logout } = useAuth();
+  const { user } = useCurrentUser();
 
-  const userName = user?.name ?? 'User';
-  const userEmail = user?.email ?? '';
-  const userInitials = user ? getInitials(user.name) : '?';
+  const userName = props.userName ?? user?.name ?? 'Unknown User';
+  const userEmail = props.userEmail ?? user?.email ?? '';
+  const userInitials = props.userInitials ?? computeInitials(userName);
 
   function handleLogout() {
-    logout();
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    localStorage.removeItem('isAuthenticated');
+    clearMockLogin();
+
     router.push('/');
   }
 
@@ -88,7 +110,6 @@ export default function AppNavbar() {
                 <LogOut className="w-[18px] h-[18px]" strokeWidth={2} />
                 Logout
               </button>
-
             </div>
           </li>
         </ul>

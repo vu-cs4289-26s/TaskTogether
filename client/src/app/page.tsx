@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
-import AuthModal from '@/components/auth/AuthModal';
+import { AuthProvider, useAuth } from '@/contexts/AuthContext';
+import AuthModal from '@/components/modals/AuthModal';
 import Navbar from '@/components/landing/Navbar';
 import Hero from '@/components/landing/Hero';
 import Features from '@/components/landing/Features';
@@ -66,7 +66,6 @@ function LandingPageContent() {
     }
   };
 
-  // If user is logged in, redirect to households
   if (user) {
     if (typeof window !== 'undefined') {
       window.location.href = '/households';

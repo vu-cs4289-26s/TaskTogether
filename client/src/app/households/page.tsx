@@ -7,7 +7,8 @@ import AppNavbar from '@/components/shared/AppNavbar';
 import { listHouseholds, createHousehold } from '@/lib/households';
 import type { Household } from '@/types/households';
 import { getInitials, getAvatarColor } from '@/types/households';
-import AddHouseholdModal from '@/components/households/AddHouseholdModal';
+import AddHouseholdModal from '@/components/modals/AddHouseholdModal';
+
 
 export default function HouseholdsPage() {
     const router = useRouter();

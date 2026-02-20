@@ -301,9 +301,7 @@ export default function HouseholdDashboardPage() {
                 </div>
             </div>
 
-            {/* Dashboard Content */}
             <div className="max-w-[1400px] mx-auto p-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Chore List */}
                 <div className="bg-surface rounded-md p-6 shadow-sm border border-divider">
                     <div className="flex justify-between items-center mb-6 pb-4 border-b border-divider">
                         <h2 className="text-xl font-semibold text-sage">Household Chores</h2>
