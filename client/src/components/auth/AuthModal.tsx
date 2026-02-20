@@ -52,11 +52,11 @@ export default function AuthModal({
   return (
     <div
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-[200] p-6"
-      onClick={onClose}
+      onMouseDown={(e) => {if (e.target === e.currentTarget) onClose();}}
     >
       <div
         className="bg-surface rounded-lg p-8 shadow-lg border border-divider w-full max-w-[450px]"
-        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="text-center mb-8">
