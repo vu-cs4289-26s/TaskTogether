@@ -283,7 +283,7 @@ export default function HouseholdDashboardPage() {
                     </div>
 
                     <div className="flex gap-4 mt-4 flex-wrap">
-                        {/* <button className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium flex items-center gap-2 transition-all hover:bg-base hover:border-sage">
+                        <button className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium flex items-center gap-2 transition-all hover:bg-base hover:border-sage">
                             <svg
                                 width="16"
                                 height="16"
@@ -298,7 +298,7 @@ export default function HouseholdDashboardPage() {
                                 <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
                             </svg>
                             Settings
-                        </button> */}
+                        </button>
 
                         <button className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium flex items-center gap-2 transition-all hover:bg-base hover:border-sage">
                             <svg
@@ -321,9 +321,7 @@ export default function HouseholdDashboardPage() {
                 </div>
             </div>
 
-            {/* Dashboard Content */}
             <div className="max-w-[1400px] mx-auto p-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Chore List */}
                 <div className="bg-surface rounded-md p-6 shadow-sm border border-divider">
                     <div className="flex justify-between items-center mb-6 pb-4 border-b border-divider">
                         <h2 className="text-xl font-semibold text-sage">Household Chores</h2>
@@ -412,7 +410,6 @@ export default function HouseholdDashboardPage() {
                     </div>
                 </div>
 
-                {/* Shared Calendar */}
                 <div className="bg-surface rounded-md p-6 shadow-sm border border-divider">
                     <div className="flex justify-between items-center mb-6 pb-4 border-b border-divider">
                         <h2 className="text-xl font-semibold text-sage">Shared Calendar</h2>
@@ -490,7 +487,6 @@ export default function HouseholdDashboardPage() {
                     </div>
                 </div>
 
-                {/* Report Issues - Full Width */}
                 <div className="lg:col-span-2 bg-surface rounded-md p-6 shadow-sm border border-divider">
                     <div className="flex justify-between items-center mb-6 pb-4 border-b border-divider">
                         <h2 className="text-xl font-semibold text-sage">Report Issues</h2>

@@ -7,7 +7,7 @@ import AppNavbar from '@/components/shared/AppNavbar';
 import { listHouseholds } from '@/lib/households';
 import type { Household } from '@/types/households';
 
-import AddHouseholdModal from '@/components/households/AddHouseholdModal';
+import AddHouseholdModal from '@/components/modals/AddHouseholdModal';
 import { createHousehold } from '@/lib/households';
 
 
