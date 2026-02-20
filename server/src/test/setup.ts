@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { beforeEach, afterAll } from 'vitest';
 
 // Redirect Prisma to the test DB for the entire test run.
 // This must happen before any module imports prisma (i.e. before the app loads).
