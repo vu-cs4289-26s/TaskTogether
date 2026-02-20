@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import BaseModal from '@/components/modals/BaseModal';
-import ModalHeader from '@/components/modals/ModalHeader';
 import Button from '@/components/ui/Button';
 import Field, { inputClass } from '@/components/ui/Field';
 
@@ -81,14 +80,12 @@ export default function ReportIssueModal({
     <BaseModal
       open={open}
       ariaLabel="Report an issue"
+      title="Report an Issue"
+      subtitle="Report a household issue or conflict"
       isBlocking={isSubmitting}
       onClose={onClose}
       maxWidthClassName="max-w-[560px]"
     >
-      <ModalHeader
-        title="Report an Issue"
-        subtitle="Report a household issue or conflict"
-      />
 
       <div className="flex flex-col gap-4">
         <Field label="Issue Title" required htmlFor="issue-title">
