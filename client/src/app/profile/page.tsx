@@ -1,14 +1,13 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import AppNavbar from '@/components/shared/AppNavbar';
-
-const tasks = [
-  { id: '1', title: 'Vacuum living room', household: 'Main St Apt', due: 'Feb 6', priority: 'high' },
-  { id: '2', title: 'Water plants', household: 'Main St Apt', due: 'Feb 7', priority: 'low' },
-  { id: '3', title: 'Organize storage closet', household: 'Beach House', due: 'Feb 10', priority: 'medium' },
-  { id: '4', title: 'Clean kitchen counters', household: 'Campus Dorm', due: 'Feb 5', priority: 'high' },
-  { id: '5', title: 'Replace air filter', household: 'Main St Apt', due: 'Feb 15', priority: 'low' },
-];
+import { useAuth } from '@/contexts/AuthContext';
+import { getInitials } from '@/types/households';
+import { listHouseholdsApi } from '@/lib/households.api';
+import { listTasksApi } from '@/lib/tasks.api';
+import type { Task } from '@/types/tasks';
+import type { Household } from '@/types/households';
 
 const priorityStyles: Record<string, string> = {
   high: 'bg-urgent/10 text-urgent border border-urgent',
@@ -18,6 +17,7 @@ const priorityStyles: Record<string, string> = {
 
 const priorityLabels: Record<string, string> = { high: 'P1', medium: 'P2', low: 'P3' };
 
+// Static calendar data
 const calendarDays = [
   { day: 26, other: true }, { day: 27, other: true }, { day: 28, other: true },
   { day: 29, other: true }, { day: 30, other: true }, { day: 31, other: true },
@@ -40,7 +40,69 @@ const eventDotColors: Record<string, string> = {
   household: 'bg-terracotta',
 };
 
+interface TaskWithHousehold extends Task {
+  householdName: string;
+}
+
 export default function ProfilePage() {
+  const { user } = useAuth();
+
+  const [households, setHouseholds] = useState<Household[]>([]);
+  const [myTasks, setMyTasks] = useState<TaskWithHousehold[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user) return;
+
+    async function fetchData() {
+      try {
+        setLoading(true);
+        const hh = await listHouseholdsApi();
+        setHouseholds(hh);
+
+        // Fetch tasks assigned to me from each household
+        const allTasks: TaskWithHousehold[] = [];
+        await Promise.all(
+          hh.map(async (h) => {
+            try {
+              const { tasks } = await listTasksApi(h.id, { assignedToMe: true, limit: 50 });
+              tasks.forEach((t) => allTasks.push({ ...t, householdName: h.name }));
+            } catch {
+              // Skip households where task fetch fails
+            }
+          })
+        );
+
+        // Sort by due date, tasks without due date at the end
+        allTasks.sort((a, b) => {
+          if (!a.dueDate && !b.dueDate) return 0;
+          if (!a.dueDate) return 1;
+          if (!b.dueDate) return -1;
+          return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+        });
+
+        setMyTasks(allTasks);
+      } catch {
+        // Error loading data
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchData();
+  }, [user]);
+
+  const activeTasks = myTasks.filter(
+    (t) => t.completions.length === 0 && !t.assignments.some((a) => a.status === 'COMPLETED')
+  );
+  const completedTasks = myTasks.filter(
+    (t) => t.completions.length > 0 || t.assignments.some((a) => a.status === 'COMPLETED')
+  );
+
+  const userName = user?.name ?? 'User';
+  const userEmail = user?.email ?? '';
+  const userInitials = user ? getInitials(user.name) : '?';
+
   return (
     <div className="min-h-screen bg-base">
       <AppNavbar />
@@ -49,22 +111,22 @@ export default function ProfilePage() {
       <div className="bg-surface border-b border-divider px-6 py-8">
         <div className="max-w-[1400px] mx-auto flex items-center gap-6">
           <div className="w-24 h-24 rounded-full bg-sage text-white flex items-center justify-center text-4xl font-bold border-4 border-divider flex-shrink-0">
-            JD
+            {userInitials}
           </div>
           <div className="flex-1">
-            <h1 className="text-[32px] font-heading font-bold mb-1">Jordan Davis</h1>
-            <p className="text-text-secondary text-sm mb-3">jordan.davis@email.com</p>
+            <h1 className="text-[32px] font-heading font-bold mb-1">{userName}</h1>
+            <p className="text-text-secondary text-sm mb-3">{userEmail}</p>
             <div className="flex gap-6 mt-3">
               <div className="flex flex-col">
-                <span className="text-2xl font-bold text-sage">12</span>
+                <span className="text-2xl font-bold text-sage">{loading ? '-' : activeTasks.length}</span>
                 <span className="text-[13px] text-text-secondary uppercase tracking-wide">Active Tasks</span>
               </div>
               <div className="flex flex-col">
-                <span className="text-2xl font-bold text-sage">3</span>
+                <span className="text-2xl font-bold text-sage">{loading ? '-' : households.length}</span>
                 <span className="text-[13px] text-text-secondary uppercase tracking-wide">Households</span>
               </div>
               <div className="flex flex-col">
-                <span className="text-2xl font-bold text-sage">48</span>
+                <span className="text-2xl font-bold text-sage">{loading ? '-' : completedTasks.length}</span>
                 <span className="text-[13px] text-text-secondary uppercase tracking-wide">Completed</span>
               </div>
             </div>
@@ -85,43 +147,49 @@ export default function ProfilePage() {
         <div className="bg-surface rounded-md p-6 shadow-sm border border-divider">
           <div className="flex justify-between items-center mb-6 pb-4 border-b border-divider">
             <h2 className="text-xl font-semibold text-sage">My Tasks</h2>
-            <button className="px-5 py-2.5 rounded-sm bg-sage text-white font-medium flex items-center gap-2 transition-all hover:bg-sage-hover hover:-translate-y-px">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-              Add Task
-            </button>
           </div>
 
-          <div className="flex flex-col gap-4">
-            {tasks.map((task) => (
-              <div
-                key={task.id}
-                className="flex items-start gap-4 p-4 rounded-sm border border-divider transition-all hover:border-sage hover:shadow-sm"
-              >
-                <div className="w-6 h-6 rounded border-2 border-divider cursor-pointer flex-shrink-0 mt-0.5 hover:border-sage transition-all" />
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-semibold flex-1">{task.title}</span>
-                    <span className={`px-2 py-0.5 rounded text-[11px] font-semibold uppercase ${priorityStyles[task.priority]}`}>
-                      {priorityLabels[task.priority]}
-                    </span>
+          {loading ? (
+            <div className="text-text-secondary text-sm py-4">Loading tasks...</div>
+          ) : activeTasks.length === 0 ? (
+            <div className="text-text-secondary text-sm py-4">No active tasks assigned to you.</div>
+          ) : (
+            <div className="flex flex-col gap-4">
+              {activeTasks.map((task) => {
+                const priority = task.priority || 'medium';
+                return (
+                  <div
+                    key={task.id}
+                    className="flex items-start gap-4 p-4 rounded-sm border border-divider transition-all hover:border-sage hover:shadow-sm"
+                  >
+                    <div className="w-6 h-6 rounded border-2 border-divider flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-semibold flex-1">{task.title}</span>
+                        <span className={`px-2 py-0.5 rounded text-[11px] font-semibold uppercase ${priorityStyles[priority]}`}>
+                          {priorityLabels[priority]}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-4 text-[13px] text-text-secondary">
+                        <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-soft-highlight text-text-primary">
+                          {task.householdName}
+                        </span>
+                        <span>&bull;</span>
+                        <span>
+                          {task.dueDate
+                            ? `Due: ${new Date(task.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+                            : 'No due date'}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-4 text-[13px] text-text-secondary">
-                    <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-soft-highlight text-text-primary">
-                      {task.household}
-                    </span>
-                    <span>&bull;</span>
-                    <span>Due: {task.due}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        {/* My Calendar */}
+        {/* My Calendar (static) */}
         <div className="bg-surface rounded-md p-6 shadow-sm border border-divider">
           <div className="flex justify-between items-center mb-6 pb-4 border-b border-divider">
             <h2 className="text-xl font-semibold text-sage">My Calendar</h2>

@@ -1,20 +1,4 @@
-// switch b/w mock and real API
+// Real API calls — mock data file kept for future reference
+// To re-enable mocks, set NEXT_PUBLIC_USE_MOCK_API=true and update imports
 
-import type { Household } from '@/types/households';
-import { listHouseholdsApi, getHouseholdApi, createHouseholdApi } from './households.api';
-import { listHouseholdsMock, getHouseholdMock, createHouseholdMock } from './mockHouseholds';
-
-const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK_API === 'true';
-
-export function listHouseholds(): Promise<Household[]> {
-  return USE_MOCK ? listHouseholdsMock() : listHouseholdsApi();
-}
-
-export function getHousehold(id: string): Promise<Household | null> {
-  return USE_MOCK ? getHouseholdMock(id) : getHouseholdApi(id);
-}
-
-export function createHousehold(input: { name: string; description?: string }): Promise<Household> {
-  return USE_MOCK ? createHouseholdMock(input) : createHouseholdApi({ name: input.name });
-}
- 
+export { listHouseholdsApi as listHouseholds, getHouseholdApi as getHousehold, createHouseholdApi as createHousehold } from './households.api';

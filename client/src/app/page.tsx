@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { AuthProvider, useAuth } from '@/contexts/AuthContext';
+import { useAuth } from '@/contexts/AuthContext';
 import AuthModal from '@/components/auth/AuthModal';
 import Navbar from '@/components/landing/Navbar';
 import Hero from '@/components/landing/Hero';
@@ -100,9 +100,5 @@ function LandingPageContent() {
 }
 
 export default function Home() {
-  return (
-    <AuthProvider>
-      <LandingPageContent />
-    </AuthProvider>
-  );
+  return <LandingPageContent />;
 }

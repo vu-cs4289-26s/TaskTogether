@@ -3,25 +3,21 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { LogOut, Settings, User } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { getInitials } from '@/types/households';
 
-interface AppNavbarProps {
-  userName?: string;
-  userEmail?: string;
-  userInitials?: string;
-}
-
-export default function AppNavbar({ userName = 'Jordan Davis', userEmail = 'jordan.davis@email.com', userInitials = 'JD' }: AppNavbarProps) {
+export default function AppNavbar() {
   const pathname = usePathname();
   const router = useRouter();
+  const { user, logout } = useAuth();
+
+  const userName = user?.name ?? 'User';
+  const userEmail = user?.email ?? '';
+  const userInitials = user ? getInitials(user.name) : '?';
 
   function handleLogout() {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    localStorage.removeItem('isAuthenticated');
-
+    logout();
     router.push('/');
-    router.refresh();
   }
 
   const navLinks = [

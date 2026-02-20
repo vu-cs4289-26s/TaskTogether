@@ -15,6 +15,7 @@ router.use(authenticate);
 const userSelect = { id: true, name: true, email: true, avatar: true } as const;
 
 const VALID_RECURRENCE_PATTERNS = ['daily', 'weekly', 'monthly'] as const;
+const VALID_PRIORITIES = ['low', 'medium', 'high'] as const;
 const MAX_TITLE_LENGTH = 200;
 
 // ============================================
@@ -151,6 +152,7 @@ router.post(
         title,
         description,
         dueDate,
+        priority,
         isRecurring = false,
         recurrencePattern,
         isRotating = false,
@@ -170,6 +172,14 @@ router.post(
         res.status(400).json({
           status: 'error',
           error: { code: 'VALIDATION_ERROR', message: `Title must be ${MAX_TITLE_LENGTH} characters or fewer` },
+        });
+        return;
+      }
+
+      if (priority !== undefined && !VALID_PRIORITIES.includes(priority)) {
+        res.status(400).json({
+          status: 'error',
+          error: { code: 'VALIDATION_ERROR', message: 'priority must be "low", "medium", or "high"' },
         });
         return;
       }
@@ -239,6 +249,7 @@ router.post(
             title: title.trim(),
             description: description?.trim() ?? null,
             dueDate: parsedDueDate ?? null,
+            priority: priority ?? 'medium',
             isRecurring: effectiveIsRecurring,
             recurrencePattern: effectiveIsRecurring ? recurrencePattern : null,
             isRotating,
@@ -416,7 +427,7 @@ router.put(
         return;
       }
 
-      const { title, description, dueDate, isRecurring, recurrencePattern, isRotating } = req.body;
+      const { title, description, dueDate, priority, isRecurring, recurrencePattern, isRotating } = req.body;
 
       // Validate title if provided
       if (title !== undefined) {
@@ -434,6 +445,14 @@ router.put(
           });
           return;
         }
+      }
+
+      if (priority !== undefined && !VALID_PRIORITIES.includes(priority)) {
+        res.status(400).json({
+          status: 'error',
+          error: { code: 'VALIDATION_ERROR', message: 'priority must be "low", "medium", or "high"' },
+        });
+        return;
       }
 
       const effectiveIsRecurring = isRotating ?? task.isRotating ? true : (isRecurring ?? task.isRecurring);
@@ -481,6 +500,7 @@ router.put(
           ...(isRecurring !== undefined ? { isRecurring: effectiveIsRecurring } : {}),
           ...(recurrencePattern !== undefined ? { recurrencePattern: effectiveIsRecurring ? effectivePattern : null } : {}),
           ...(isRotating !== undefined ? { isRotating } : {}),
+          ...(priority !== undefined ? { priority } : {}),
         },
         include: {
           creator: { select: userSelect },

@@ -175,6 +175,7 @@ model Task {
   recurrencePattern String?  // "daily", "weekly", "monthly"
   isRotating        Boolean  @default(false)
   rotationIndex     Int      @default(0)  // which member is next (0-based, sorted by HouseholdMember.createdAt ASC)
+  priority          String?  @default("medium") // "low", "medium", "high"
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
