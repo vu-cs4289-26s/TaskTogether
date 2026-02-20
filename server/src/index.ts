@@ -1,8 +1,11 @@
+import { createServer } from 'http';
 import express from 'express';
 import cors from 'cors';
 import prisma from './lib/prisma.js';
+import { initSocket } from './lib/socket.js';
 import authRouter from './routes/auth.js';
 import householdRouter from './routes/households.js';
+import tasksRouter from './routes/tasks.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -15,6 +18,7 @@ app.use(express.json());
 app.use('/api/auth', authRouter);
 app.use('/api/users', authRouter);
 app.use('/api/households', householdRouter);
+app.use('/api/households/:id/tasks', tasksRouter);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -53,6 +57,8 @@ app.get('/', (req, res) => {
       dbCheck: '/api/db-check',
       auth: '/api/auth',
       households: '/api/households',
+      tasks: '/api/households/:id/tasks',
+      notifications: '/api/households/:id/tasks/notifications',
     },
   });
 });
@@ -81,30 +87,34 @@ app.use(
   }
 );
 
-// Start server
-const server = app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-  console.log(`Health check: http://localhost:${PORT}/api/health`);
-  console.log(`DB check: http://localhost:${PORT}/api/db-check`);
-});
+// Start server — skipped in test mode (Supertest creates its own server)
+if (process.env.NODE_ENV !== 'test') {
+  const httpServer = createServer(app);
+  initSocket(httpServer);
 
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-  console.log('SIGTERM received, shutting down gracefully...');
-  server.close(async () => {
-    await prisma.$disconnect();
-    console.log('Server closed');
-    process.exit(0);
+  const server = httpServer.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Health check: http://localhost:${PORT}/api/health`);
+    console.log(`DB check: http://localhost:${PORT}/api/db-check`);
   });
-});
 
-process.on('SIGINT', async () => {
-  console.log('\nSIGINT received, shutting down gracefully...');
-  server.close(async () => {
-    await prisma.$disconnect();
-    console.log('Server closed');
-    process.exit(0);
+  process.on('SIGTERM', async () => {
+    console.log('SIGTERM received, shutting down gracefully...');
+    server.close(async () => {
+      await prisma.$disconnect();
+      console.log('Server closed');
+      process.exit(0);
+    });
   });
-});
+
+  process.on('SIGINT', async () => {
+    console.log('\nSIGINT received, shutting down gracefully...');
+    server.close(async () => {
+      await prisma.$disconnect();
+      console.log('Server closed');
+      process.exit(0);
+    });
+  });
+}
 
 export default app;

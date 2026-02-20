@@ -41,6 +41,11 @@ enum ActivityStatus {
     CANCELLED
 }
 
+enum NotificationType {
+  TASK_ASSIGNED
+  TASK_COMPLETED
+}
+
 // ============================================
 // USER MANAGEMENT
 // ============================================
@@ -80,6 +85,9 @@ model User {
   // Household delete votes
   deleteVotes HouseholdDeleteVote[]
 
+  // Notifications
+  notifications Notification[] @relation("UserNotifications")
+
   @@index([email])
 }
 
@@ -105,6 +113,7 @@ model Household {
   activities     QualityTimeActivity[]
   invites        HouseholdInvite[]
   deleteVotes    HouseholdDeleteVote[]
+  notifications  Notification[]
 }
 
 model HouseholdMember {
@@ -163,17 +172,19 @@ model Task {
   description       String?
   dueDate           DateTime?
   isRecurring       Boolean  @default(false)
-  recurrencePattern String?  // "daily", "weekly", "monthly", or cron pattern
+  recurrencePattern String?  // "daily", "weekly", "monthly"
+  isRotating        Boolean  @default(false)
+  rotationIndex     Int      @default(0)  // which member is next (0-based, sorted by HouseholdMember.createdAt ASC)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
   // Relations
   creatorId    String
   creator      User      @relation("TaskCreator", fields: [creatorId], references: [id], onDelete: Cascade)
-  
+
   householdId  String
   household    Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
-  
+
   // Assignments and completions
   assignments  TaskAssignment[]
   completions  TaskCompletion[]
@@ -182,6 +193,7 @@ model Task {
   @@index([creatorId])
   @@index([dueDate])
   @@index([isRecurring])
+  @@index([isRotating])
 }
 
 model TaskAssignment {
@@ -453,4 +465,26 @@ model HouseholdRule {
   @@index([householdId])
 }
 
+// ============================================
+// NOTIFICATIONS
+// ============================================
 
+model Notification {
+  id          String           @id @default(uuid())
+  type        NotificationType
+  isRead      Boolean          @default(false)
+  message     String
+  payload     Json?
+  createdAt   DateTime         @default(now())
+
+  userId      String
+  user        User      @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([householdId])
+  @@index([isRead])
+  @@index([createdAt])
+}
