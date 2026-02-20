@@ -146,12 +146,12 @@ jobs:
 
       - name: Health check backend
         run: |
-          curl -f http://localhost:3001/api/health || exit 1
+          curl -f http://127.0.0.1:3001/api/health || exit 1
           echo "Backend health check passed"
 
       - name: Database connection check
         run: |
-          curl -f http://localhost:3001/api/db-check || exit 1
+          curl -f http://127.0.0.1:3001/api/db-check || exit 1
           echo "Database connection check passed"
 
       - name: Cleanup
