@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { LogOut, Settings, User } from 'lucide-react';
+import { useCurrentUser } from '@/hook/currentUser';
+import { clearMockLogin } from '@/lib/mockAuth';
 
 interface AppNavbarProps {
   userName?: string;
@@ -10,15 +12,32 @@ interface AppNavbarProps {
   userInitials?: string;
 }
 
-export default function AppNavbar({ userName = 'Jordan Davis', userEmail = 'jordan.davis@email.com', userInitials = 'JD' }: AppNavbarProps) {
+function computeInitials(name?: string) {
+  const trimmed = (name ?? '').trim();
+  if (!trimmed) return '??';
+  return trimmed
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((s) => s[0]!.toUpperCase())
+    .join('');
+}
+
+export default function AppNavbar(props: AppNavbarProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const { user } = useCurrentUser();
+
+  const userName = props.userName ?? user?.name ?? 'Unknown User';
+  const userEmail = props.userEmail ?? user?.email ?? '';
+  const userInitials = props.userInitials ?? computeInitials(userName);
 
   function handleLogout() {
     localStorage.removeItem('accessToken');
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     localStorage.removeItem('isAuthenticated');
+    clearMockLogin();
 
     router.push('/');
     router.refresh();
@@ -92,7 +111,6 @@ export default function AppNavbar({ userName = 'Jordan Davis', userEmail = 'jord
                 <LogOut className="w-[18px] h-[18px]" strokeWidth={2} />
                 Logout
               </button>
-
             </div>
           </li>
         </ul>
