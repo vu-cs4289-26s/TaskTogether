@@ -42,8 +42,6 @@ function SettingItem({ label, hint, right, noDivider }: ItemProps) {
 }
 
 export default function SettingsPage() {
-  // Static-ish state for now (you can wire to real prefs later)
-  const [emailNotifs, setEmailNotifs] = useState(true);
   const [pushNotifs, setPushNotifs] = useState(true);
   const [taskReminders, setTaskReminders] = useState(true);
   const [weeklyDigest, setWeeklyDigest] = useState(false);
@@ -78,11 +76,7 @@ export default function SettingsPage() {
           title="Notifications"
           description="Choose how you want to be notified about household activities"
         >
-          <SettingItem
-            label="Email Notifications"
-            hint="Receive email updates for tasks, events, and issues"
-            right={<Toggle checked={emailNotifs} onChange={setEmailNotifs} label="Email notifications" />}
-          />
+
           <SettingItem
             label="Push Notifications"
             hint="Get real-time notifications on your device"
@@ -93,11 +87,7 @@ export default function SettingsPage() {
             hint="Remind me about upcoming task deadlines"
             right={<Toggle checked={taskReminders} onChange={setTaskReminders} label="Task reminders" />}
           />
-          <SettingItem
-            label="Weekly Digest"
-            hint="Send a weekly summary of household activity"
-            right={<Toggle checked={weeklyDigest} onChange={setWeeklyDigest} label="Weekly digest" />}
-          />
+        
           <SettingItem
             label="Notification Frequency"
             hint="How often to send email notifications"
@@ -117,7 +107,7 @@ export default function SettingsPage() {
           />
         </SettingsSection>
 
-        <SettingsSection
+        {/* <SettingsSection
           title="Privacy"
           description="Control your privacy and visibility settings"
         >
@@ -147,7 +137,7 @@ export default function SettingsPage() {
             right={<Toggle checked={activityStatus} onChange={setActivityStatus} label="Activity status" />}
             noDivider
           />
-        </SettingsSection>
+        </SettingsSection> */}
 
         <SettingsSection
           title="Account"
@@ -226,7 +216,7 @@ export default function SettingsPage() {
               </select>
             }
           />
-          <SettingItem
+          {/* <SettingItem
             label="Language"
             hint="Choose your preferred language"
             right={
@@ -241,7 +231,7 @@ export default function SettingsPage() {
                 <option value="de">Deutsch</option>
               </select>
             }
-          />
+          /> */}
           <SettingItem
             label="Timezone"
             hint="Used for task deadlines and event times"
@@ -290,7 +280,7 @@ export default function SettingsPage() {
           />
         </SettingsSection>
 
-        <SettingsSection
+        {/* <SettingsSection
           title="Data & Storage"
           description="Manage your data and account"
         >
@@ -319,7 +309,7 @@ export default function SettingsPage() {
             }
             noDivider
           />
-        </SettingsSection>
+        </SettingsSection> */}
       </main>
     </div>
   );

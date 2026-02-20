@@ -129,18 +129,12 @@ export default function HouseholdsPage() {
                                             {members.map((m, i) => (
                                                 <div
                                                     key={`${h.id}-m-${i}`}
-                                                    className={`w-8 h-8 rounded-full border-2 border-surface flex items-center justify-center text-xs font-semibold text-white ${m?.color ?? 'bg-[#6E6E70]'}`}
+                                                    className="w-8 h-8 rounded-full border-2 border-divider flex items-center justify-center text-xs font-semibold text-white" style={{ backgroundColor: m?.color ?? '#6E6E70' }}
                                                     title={m?.initials ?? ''}
                                                 >
                                                     {m?.initials ?? '?'}
                                                 </div>
                                             ))}
-
-                                            {extraCount > 0 && (
-                                                <div className="w-8 h-8 rounded-full border-2 border-surface flex items-center justify-center text-xs font-semibold bg-divider text-text-primary">
-                                                    +{extraCount}
-                                                </div>
-                                            )}
                                         </div>
                                     </div>
 
