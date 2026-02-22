@@ -9,10 +9,6 @@ router.use(authenticate);
 
 const userSelect = { id: true, name: true, email: true, avatar: true } as const;
 
-// ============================================
-// ACTIVITY / CALENDAR ENDPOINTS
-// Owner: Emily
-// ============================================
 
 // POST / — Create an activity (any household member)
 // TODO: Validate title is required and non-empty

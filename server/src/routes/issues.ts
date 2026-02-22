@@ -9,11 +9,6 @@ router.use(authenticate);
 
 const userSelect = { id: true, name: true, email: true, avatar: true } as const;
 
-// ============================================
-// ISSUE ENDPOINTS
-// Owner: Sahnee
-// ============================================
-
 // POST / — Create an issue (any household member)
 // TODO: Validate title is required and non-empty
 // TODO: Set reportedById to req.userId

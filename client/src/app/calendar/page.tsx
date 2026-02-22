@@ -9,8 +9,6 @@ import AppNavbar from '@/components/shared/AppNavbar';
 // - Add "Create Event" button that opens CreateEventModal (import from @/components/modals/CreateEventModal)
 // - Clicking a day should show a list of activities for that day (use ActivityCard)
 // - Support month navigation (prev/next buttons)
-// - Color code by activityType:
-//     CHORE: bg-sage, BONDING: bg-terracotta, HOMEWORK: bg-info, OTHER: bg-pending
 
 export default function CalendarPage() {
   return (
