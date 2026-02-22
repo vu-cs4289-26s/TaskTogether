@@ -50,7 +50,7 @@ export default function AppNavbar(props: AppNavbarProps) {
   return (
     <nav className="bg-surface shadow-sm sticky top-0 z-50">
       <div className="max-w-[1400px] mx-auto flex justify-between items-center px-6 py-4">
-        <Link href="/households" className="font-extrabold text-2xl font-bold text-sage">
+        <Link href="/households" className="font-extrabold text-2xl text-sage">
           TaskTogether
         </Link>
 
