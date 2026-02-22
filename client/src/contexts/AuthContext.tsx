@@ -6,9 +6,7 @@ import type { User } from '@/types/user';
 import { getCurrentUser } from '@/lib/user';
 import { loginMock, registerMock, clearMockLogin } from '@/lib/mockAuth';
 
-const USE_MOCK =
-    process.env.NEXT_PUBLIC_USE_MOCK === 'true' ||
-    process.env.NODE_ENV !== 'production';
+const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === 'true';
 
 interface AuthContextType {
     user: User | null;

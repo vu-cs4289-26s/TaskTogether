@@ -1,7 +1,7 @@
 'use client';
 
 import AppNavbar from '@/components/shared/AppNavbar';
-import { useCurrentUser } from '@/hook/currentUser';
+import { useAuth } from '@/contexts/AuthContext';
 import { Pencil, Plus } from 'lucide-react';
 
 type CalendarEventType = 'personal' | 'household';
@@ -56,7 +56,8 @@ const eventDotColors: Record<string, string> = {
 };
 
 export default function ProfilePage() {
-  const { user, loading, error } = useCurrentUser();
+  const { user, loading } = useAuth();
+  const error = !loading && !user ? 'Not logged in' : null;
 
   const initials =
     user?.name

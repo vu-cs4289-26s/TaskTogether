@@ -7,5 +7,6 @@ const USE_MOCK =
   process.env.NODE_ENV !== 'production';
 
 export function getCurrentUser(): Promise<User> {
+  if (USE_MOCK) return getCurrentUserMock();
   return getCurrentUserApi();
 }

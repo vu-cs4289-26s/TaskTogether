@@ -3,8 +3,8 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { LogOut, Settings, User } from 'lucide-react';
-import { useCurrentUser } from '@/hook/currentUser';
-import { clearMockLogin } from '@/lib/mockAuth';
+import { useAuth } from '@/contexts/AuthContext';
+import { log } from 'console';
 
 interface AppNavbarProps {
   userName?: string;
@@ -26,19 +26,14 @@ function computeInitials(name?: string) {
 export default function AppNavbar(props: AppNavbarProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user } = useCurrentUser();
+  const { user, logout } = useAuth();
 
   const userName = props.userName ?? user?.name ?? 'Unknown User';
   const userEmail = props.userEmail ?? user?.email ?? '';
   const userInitials = props.userInitials ?? computeInitials(userName);
 
   function handleLogout() {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    localStorage.removeItem('isAuthenticated');
-    clearMockLogin();
-
+    logout();
     router.push('/');
   }
 
