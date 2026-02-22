@@ -6,6 +6,8 @@ import { initSocket } from './lib/socket.js';
 import authRouter from './routes/auth.js';
 import householdRouter from './routes/households.js';
 import tasksRouter from './routes/tasks.js';
+import issuesRouter from './routes/issues.js';
+import activitiesRouter from './routes/activities.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -19,6 +21,8 @@ app.use('/api/auth', authRouter);
 app.use('/api/users', authRouter);
 app.use('/api/households', householdRouter);
 app.use('/api/households/:id/tasks', tasksRouter);
+app.use('/api/households/:id/issues', issuesRouter);
+app.use('/api/households/:id/activities', activitiesRouter);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -58,6 +62,8 @@ app.get('/', (req, res) => {
       auth: '/api/auth',
       households: '/api/households',
       tasks: '/api/households/:id/tasks',
+      issues: '/api/households/:id/issues',
+      activities: '/api/households/:id/activities',
       notifications: '/api/households/:id/tasks/notifications',
     },
   });
