@@ -41,6 +41,11 @@ enum ActivityStatus {
     CANCELLED
 }
 
+enum NotificationType {
+  TASK_ASSIGNED
+  TASK_COMPLETED
+}
+
 // ============================================
 // USER MANAGEMENT
 // ============================================
@@ -57,9 +62,6 @@ model User {
   // Household memberships (many-to-many via join table)
   householdMemberships HouseholdMember[]
 
-  // Ownership (a user can own multiple households)
-  ownedHouseholds Household[] @relation("HouseholdOwner")
-
   // Tasks
   createdTasks       Task[]           @relation("TaskCreator")
   assignedTasks      TaskAssignment[]
@@ -69,7 +71,7 @@ model User {
   reportedIssues     Issue[]          @relation("IssueReporter")
   issueComments      IssueComment[]
 
-  // Communication
+  // Communication + Wiki
   announcements      Announcement[]
   discussionThreads  DiscussionThread[]
   discussionReplies  DiscussionReply[]
@@ -79,6 +81,12 @@ model User {
   // Quality Time
   activityParticipants ActivityParticipant[]
   activityCheckIns     ActivityCheckIn[]
+
+  // Household delete votes
+  deleteVotes HouseholdDeleteVote[]
+
+  // Notifications
+  notifications Notification[] @relation("UserNotifications")
 
   @@index([email])
 }
@@ -93,10 +101,6 @@ model Household {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Owner (a user can own multiple households)
-  ownerId   String
-  owner     User     @relation("HouseholdOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-
   // Members (many-to-many via join table)
   members   HouseholdMember[]
 
@@ -107,8 +111,9 @@ model Household {
   announcements  Announcement[]
   discussions    DiscussionThread[]
   activities     QualityTimeActivity[]
-
-  @@index([ownerId])
+  invites        HouseholdInvite[]
+  deleteVotes    HouseholdDeleteVote[]
+  notifications  Notification[]
 }
 
 model HouseholdMember {
@@ -127,6 +132,36 @@ model HouseholdMember {
   @@index([householdId])
 }
 
+model HouseholdInvite {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdAt   DateTime @default(now())
+
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@index([code])
+  @@index([householdId])
+  @@index([expiresAt])
+}
+
+model HouseholdDeleteVote {
+  id          String   @id @default(uuid())
+  createdAt   DateTime @default(now())
+
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  voterId     String
+  voter       User      @relation(fields: [voterId], references: [id], onDelete: Cascade)
+
+  @@unique([householdId, voterId])
+  @@index([householdId])
+  @@index([voterId])
+}
+
 // ============================================
 // TASK SYSTEM
 // ============================================
@@ -137,17 +172,20 @@ model Task {
   description       String?
   dueDate           DateTime?
   isRecurring       Boolean  @default(false)
-  recurrencePattern String?  // "daily", "weekly", "monthly", or cron pattern
+  recurrencePattern String?  // "daily", "weekly", "monthly"
+  isRotating        Boolean  @default(false)
+  rotationIndex     Int      @default(0)  // which member is next (0-based, sorted by HouseholdMember.createdAt ASC)
+  priority          String?  @default("medium") // "low", "medium", "high"
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
   // Relations
   creatorId    String
   creator      User      @relation("TaskCreator", fields: [creatorId], references: [id], onDelete: Cascade)
-  
+
   householdId  String
   household    Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
-  
+
   // Assignments and completions
   assignments  TaskAssignment[]
   completions  TaskCompletion[]
@@ -156,6 +194,7 @@ model Task {
   @@index([creatorId])
   @@index([dueDate])
   @@index([isRecurring])
+  @@index([isRotating])
 }
 
 model TaskAssignment {
@@ -427,4 +466,26 @@ model HouseholdRule {
   @@index([householdId])
 }
 
+// ============================================
+// NOTIFICATIONS
+// ============================================
 
+model Notification {
+  id          String           @id @default(uuid())
+  type        NotificationType
+  isRead      Boolean          @default(false)
+  message     String
+  payload     Json?
+  createdAt   DateTime         @default(now())
+
+  userId      String
+  user        User      @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([householdId])
+  @@index([isRead])
+  @@index([createdAt])
+}

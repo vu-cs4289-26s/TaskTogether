@@ -1,0 +1,245 @@
+'use client';
+
+import { useState } from 'react';
+import type { HouseholdMember } from '@/types/households';
+import { getInitials, getAvatarColor } from '@/types/households';
+import { createInviteApi, removeMemberApi, promoteMemberApi } from '@/lib/households.api';
+
+type Props = {
+  open: boolean;
+  householdId: string;
+  members: HouseholdMember[];
+  myRole: 'ADMIN' | 'MEMBER';
+  currentUserId: string;
+  onClose: () => void;
+  onMembersChanged: () => void;
+};
+
+export default function ManageMembersModal({
+  open,
+  householdId,
+  members,
+  myRole,
+  currentUserId,
+  onClose,
+  onMembersChanged,
+}: Props) {
+  const [inviteCode, setInviteCode] = useState<string | null>(null);
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!open) return null;
+
+  const isAdmin = myRole === 'ADMIN';
+
+  async function handleGenerateInvite() {
+    try {
+      setInviteLoading(true);
+      setError(null);
+      const { code } = await createInviteApi(householdId);
+      setInviteCode(code);
+    } catch {
+      setError('Failed to generate invite code.');
+    } finally {
+      setInviteLoading(false);
+    }
+  }
+
+  async function handleRemoveMember(userId: string) {
+    try {
+      setActionLoading(userId);
+      setError(null);
+      await removeMemberApi(householdId, userId);
+      onMembersChanged();
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: { message?: string } } } };
+      setError(e.response?.data?.error?.message || 'Failed to remove member.');
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function handlePromote(userId: string) {
+    try {
+      setActionLoading(userId);
+      setError(null);
+      await promoteMemberApi(householdId, userId);
+      onMembersChanged();
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: { message?: string } } } };
+      setError(e.response?.data?.error?.message || 'Failed to promote member.');
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function handleLeave() {
+    try {
+      setActionLoading(currentUserId);
+      setError(null);
+      await removeMemberApi(householdId, currentUserId);
+      onMembersChanged();
+      onClose();
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: { message?: string } } } };
+      setError(e.response?.data?.error?.message || 'Failed to leave household.');
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  function handleCopyCode() {
+    if (inviteCode) {
+      navigator.clipboard.writeText(inviteCode);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center px-4"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') onClose();
+      }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Manage household members"
+    >
+      <div className="w-full max-w-[560px] bg-surface rounded-md shadow-lg border border-divider p-8 max-h-[90vh] overflow-y-auto">
+        <div className="mb-6 pb-6 border-b-4 border-sage">
+          <h2 className="text-2xl font-heading font-semibold text-sage">
+            Manage Members
+          </h2>
+          <p className="mt-1 text-sm text-text-secondary">
+            {members.length} member{members.length !== 1 ? 's' : ''} in this household
+          </p>
+        </div>
+
+        {/* Member List */}
+        <div className="flex flex-col gap-3 mb-6">
+          {members.map((m) => {
+            const isSelf = m.user.id === currentUserId;
+            const isLoading = actionLoading === m.user.id;
+
+            return (
+              <div
+                key={m.id}
+                className="flex items-center gap-3 p-3 rounded-sm border border-divider"
+              >
+                <div
+                  className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold text-white flex-shrink-0"
+                  style={{ backgroundColor: getAvatarColor(m.user.id) }}
+                >
+                  {getInitials(m.user.name)}
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-sm truncate">
+                      {m.user.name}
+                      {isSelf && <span className="text-text-secondary font-normal"> (you)</span>}
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${
+                        m.role === 'ADMIN'
+                          ? 'bg-sage/10 text-sage border border-sage'
+                          : 'bg-soft-highlight text-text-secondary border border-divider'
+                      }`}
+                    >
+                      {m.role}
+                    </span>
+                  </div>
+                  <div className="text-[12px] text-text-secondary truncate">{m.user.email}</div>
+                </div>
+
+                {/* Admin actions */}
+                {isAdmin && !isSelf && m.role === 'MEMBER' && (
+                  <div className="flex gap-2 flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handlePromote(m.user.id)}
+                      disabled={isLoading}
+                      className="px-3 py-1.5 text-[12px] font-medium rounded-sm border border-sage text-sage hover:bg-sage/10 transition disabled:opacity-50"
+                    >
+                      Promote
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveMember(m.user.id)}
+                      disabled={isLoading}
+                      className="px-3 py-1.5 text-[12px] font-medium rounded-sm border border-urgent text-urgent hover:bg-urgent/10 transition disabled:opacity-50"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Invite Section (Admin only) */}
+        {isAdmin && (
+          <div className="mb-6 p-4 rounded-sm border-l-4 border-sage bg-gradient-to-br from-sage/5 to-terracotta/5">
+            <div className="text-base font-heading font-semibold text-sage mb-2">
+              Invite New Member
+            </div>
+
+            {inviteCode ? (
+              <div className="flex items-center gap-2">
+                <code className="flex-1 px-4 py-3 rounded-sm border border-divider bg-surface text-text-primary font-mono text-lg tracking-wider text-center">
+                  {inviteCode}
+                </code>
+                <button
+                  type="button"
+                  onClick={handleCopyCode}
+                  className="px-4 py-3 rounded-sm bg-sage text-white font-medium text-sm transition hover:bg-sage-hover"
+                >
+                  Copy
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleGenerateInvite}
+                disabled={inviteLoading}
+                className="px-5 py-2.5 rounded-sm bg-sage text-white font-medium flex items-center gap-2 transition-all hover:bg-sage-hover hover:-translate-y-px disabled:opacity-60"
+              >
+                {inviteLoading ? 'Generating...' : 'Generate Invite Code'}
+              </button>
+            )}
+            <p className="mt-2 text-[12px] text-text-secondary">
+              Share this code with someone to let them join. Expires in 7 days.
+            </p>
+          </div>
+        )}
+
+        {error && (
+          <div className="mb-4 text-sm text-red-600">{error}</div>
+        )}
+
+        <div className="flex gap-4 justify-between">
+          <button
+            type="button"
+            onClick={handleLeave}
+            disabled={actionLoading === currentUserId}
+            className="px-5 py-2.5 rounded-sm border border-urgent text-urgent font-medium transition hover:bg-urgent/10 disabled:opacity-50"
+          >
+            Leave Household
+          </button>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-6 py-3 rounded-sm border border-divider bg-transparent text-text-primary transition hover:bg-base"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

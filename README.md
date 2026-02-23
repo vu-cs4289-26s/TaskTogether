@@ -22,9 +22,7 @@ A mobile-first platform where households (roommates, families, partners) manage 
 
 ### 3. Communication Hub
 - Household-wide announcements
-- Threaded discussions on specific topics
-- @mention specific people
-- Document household agreements/rules
+- Document household agreements/rules/how things work around the place
 
 ### 4. Quality Time Scheduler (Family Mode)
 - Schedule homework blocks with photo check-in

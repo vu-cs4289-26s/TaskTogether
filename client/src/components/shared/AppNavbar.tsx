@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { LogOut, Settings, User } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { log } from 'console';
 
 interface AppNavbarProps {
   userName?: string;
@@ -10,18 +12,29 @@ interface AppNavbarProps {
   userInitials?: string;
 }
 
-export default function AppNavbar({ userName = 'Jordan Davis', userEmail = 'jordan.davis@email.com', userInitials = 'JD' }: AppNavbarProps) {
+function computeInitials(name?: string) {
+  const trimmed = (name ?? '').trim();
+  if (!trimmed) return '??';
+  return trimmed
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((s) => s[0]!.toUpperCase())
+    .join('');
+}
+
+export default function AppNavbar(props: AppNavbarProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const { user, logout } = useAuth();
+
+  const userName = props.userName ?? user?.name ?? 'Unknown User';
+  const userEmail = props.userEmail ?? user?.email ?? '';
+  const userInitials = props.userInitials ?? computeInitials(userName);
 
   function handleLogout() {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    localStorage.removeItem('isAuthenticated');
-
+    logout();
     router.push('/');
-    router.refresh();
   }
 
   const navLinks = [
@@ -32,7 +45,7 @@ export default function AppNavbar({ userName = 'Jordan Davis', userEmail = 'jord
   return (
     <nav className="bg-surface shadow-sm sticky top-0 z-50">
       <div className="max-w-[1400px] mx-auto flex justify-between items-center px-6 py-4">
-        <Link href="/households" className="font-heading text-xl font-bold text-sage">
+        <Link href="/households" className="font-extrabold text-2xl text-sage">
           TaskTogether
         </Link>
 
@@ -92,7 +105,6 @@ export default function AppNavbar({ userName = 'Jordan Davis', userEmail = 'jord
                 <LogOut className="w-[18px] h-[18px]" strokeWidth={2} />
                 Logout
               </button>
-
             </div>
           </li>
         </ul>

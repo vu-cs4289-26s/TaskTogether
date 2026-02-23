@@ -3,8 +3,6 @@ export interface User {
   email: string;
   name: string;
   avatar: string | null;
-  role: 'ADMIN' | 'MEMBER';
-  householdId: string | null;
 }
 
 export interface LoginRequest {

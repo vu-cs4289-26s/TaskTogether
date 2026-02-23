@@ -1,3 +1,5 @@
+// @ts-nocheck
+// Mock data file kept for future reference. Types no longer match backend shapes.
 import type { Household } from '@/types/households';
 
 const STORAGE_KEY = 'tt_households_v1';

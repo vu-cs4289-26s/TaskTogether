@@ -1,14 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
-import AuthModal from '@/components/auth/AuthModal';
+import AuthModal from '@/components/modals/AuthModal';
 import Navbar from '@/components/landing/Navbar';
 import Hero from '@/components/landing/Hero';
 import Features from '@/components/landing/Features';
 import HowItWorks from '@/components/landing/HowItWorks';
 import CTASection from '@/components/landing/CTASection';
 import Footer from '@/components/landing/Footer';
+import { useRouter } from 'next/navigation';
 
 function LandingPageContent() {
   const { user, login, register, logout } = useAuth();
@@ -16,6 +17,7 @@ function LandingPageContent() {
   const [modalMode, setModalMode] = useState<'login' | 'register'>('login');
   const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
+  const router = useRouter();
 
   const openLogin = () => {
     setAuthError(null);
@@ -66,12 +68,14 @@ function LandingPageContent() {
     }
   };
 
-  // If user is logged in, redirect to households
-  if (user) {
-    if (typeof window !== 'undefined') {
-      window.location.href = '/households';
+  useEffect(() => {
+    if (user) {
+      router.push('/households');
     }
-    return null;
+  }, [user, router]);
+
+  if (user) {
+    return null; // Or a loading spinner while redirecting
   }
 
   return (
@@ -100,9 +104,5 @@ function LandingPageContent() {
 }
 
 export default function Home() {
-  return (
-    <AuthProvider>
-      <LandingPageContent />
-    </AuthProvider>
-  );
+  return <LandingPageContent />;
 }
