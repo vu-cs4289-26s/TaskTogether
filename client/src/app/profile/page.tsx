@@ -129,6 +129,7 @@ export default function ProfilePage() {
         <div className="bg-surface rounded-md p-6 shadow-sm border border-divider">
           <div className="flex justify-between items-center mb-6 pb-4 border-b border-divider">
             <h2 className="text-xl font-semibold text-sage">My Tasks</h2>
+            {/* TODO: Task creation button. The tasks are personal and do not belong any household. */}
             <button
               className="px-5 py-2.5 rounded-sm bg-sage text-white font-medium flex items-center gap-2 transition-all hover:bg-sage-hover hover:-translate-y-px"
               type="button"
@@ -138,6 +139,7 @@ export default function ProfilePage() {
             </button>
           </div>
 
+          {/*TODO: Fetch all tasks for this user*/}
           <div className="text-text-secondary text-sm">
             No chores yet. Create your first household to start adding chores.
           </div>
