@@ -1,59 +1,109 @@
 'use client';
 
+import { useMemo, useState } from 'react';
 import AppNavbar from '@/components/shared/AppNavbar';
 import { useAuth } from '@/contexts/AuthContext';
 import { Pencil, Plus } from 'lucide-react';
 
-type CalendarEventType = 'personal' | 'household';
+import CalendarGrid from '@/components/calendar/CalendarGrid';
+import ActivityCard from '@/components/calendar/ActivityCard';
+import CreateEventModal, { type EventDetailInput } from '@/components/modals/CreateEventModal';
+import type { Activity, CreateActivityInput } from '@/types/activities';
 
-type CalendarDay = {
-  day: number;
-  other?: boolean;
-  today?: boolean;
-  events?: CalendarEventType[];
-};
+import BaseModal from '@/components/modals/BaseModal';
+import Button from '@/components/ui/Button';
 
-const calendarDays: CalendarDay[] = [
-  { day: 26, other: true },
-  { day: 27, other: true },
-  { day: 28, other: true },
-  { day: 29, other: true },
-  { day: 30, other: true },
-  { day: 31, other: true },
-  { day: 1, events: ['household'] },
-  { day: 2 },
-  { day: 3 },
-  { day: 4, today: true, events: ['personal'] },
-  { day: 5, events: ['personal'] },
-  { day: 6, events: ['personal', 'household'] },
-  { day: 7, events: ['personal'] },
-  { day: 8 },
-  { day: 9 },
-  { day: 10, events: ['household'] },
-  { day: 11 },
-  { day: 12 },
-  { day: 13 },
-  { day: 14, events: ['personal'] },
-  { day: 15, events: ['personal'] },
-  { day: 16 },
-  { day: 17 },
-  { day: 18 },
-  { day: 19 },
-  { day: 20 },
-  { day: 21 },
-  { day: 22 },
-  { day: 23 },
-  { day: 24 },
-  { day: 25 },
-  { day: 26 },
-  { day: 27 },
-  { day: 28 },
-  { day: 1, other: true },
-];
-const eventDotColors: Record<string, string> = {
-  personal: 'bg-sage',
-  household: 'bg-terracotta',
-};
+function pad2(n: number) {
+  return String(n).padStart(2, '0');
+}
+function dateKeyLocal(d: Date) {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+function monthLabel(year: number, month: number) {
+  return new Date(year, month, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+function buildScheduledAt(input: EventDetailInput) {
+  if (input.allDay) return `${input.date}T00:00:00`;
+  return `${input.date}T${input.startTime || '00:00'}:00`;
+}
+
+// ---- tag helpers (same idea as household) ----
+function extractTag(desc: string | null | undefined, key: string): string | null {
+  if (!desc) return null;
+  const re = new RegExp(`\\[\\[${key}:([^\\]]+)\\]\\]`, 'i');
+  const m = desc.match(re);
+  return m?.[1]?.trim() ?? null;
+}
+
+function withTags(desc: string | undefined, input: EventDetailInput) {
+  const parts: string[] = [];
+  const base = (desc ?? '').trim();
+  if (base) parts.push(base);
+
+  parts.push(`[[TT_TYPE:${input.type}]]`);
+
+  if (input.allDay) {
+    parts.push('[[TT_ALLDAY:1]]');
+  } else {
+    if (input.endTime) parts.push(`[[TT_END:${input.endTime}]]`);
+  }
+
+  return parts.join(' ').trim();
+}
+
+function stripTags(desc: string) {
+  return desc
+    .replace(/\[\[TT_TYPE:[a-z-]+\]\]/gi, '')
+    .replace(/\[\[TT_END:[0-9:]+\]\]/gi, '')
+    .replace(/\[\[TT_ALLDAY:1\]\]/gi, '')
+    .trim();
+}
+
+function prettySubtypeTitle(subtype: string | null): string {
+  const s = (subtype ?? '').toLowerCase();
+  // profile modal types should be: personal | household
+  switch (s) {
+    case 'personal':
+      return 'Personal Event';
+    case 'household':
+      return 'Household Event';
+    default:
+      return s ? s : 'Event';
+  }
+}
+
+function formatTimeRange(activity: Activity) {
+  const start = new Date(activity.scheduledAt);
+
+  const isAllDay = extractTag(activity.description, 'TT_ALLDAY') === '1';
+  const endStr = extractTag(activity.description, 'TT_END'); // "HH:MM"
+
+  const datePart = start.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+
+  if (isAllDay) return `${datePart} • All day`;
+
+  const startTime = start.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+
+  if (!endStr) return `${datePart}, ${startTime}`;
+
+  const [hh, mm] = endStr.split(':').map((x) => parseInt(x, 10));
+  const end = new Date(start);
+  end.setHours(hh || 0, mm || 0, 0, 0);
+
+  const endTime = end.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+
+  return `${datePart}, ${startTime} – ${endTime}`;
+}
 
 export default function ProfilePage() {
   const { user, loading } = useAuth();
@@ -66,6 +116,106 @@ export default function ProfilePage() {
       .slice(0, 2)
       .map((s) => s[0]!.toUpperCase())
       .join('') ?? '??';
+
+  // calendar state
+  const [calYear, setCalYear] = useState(() => new Date().getFullYear());
+  const [calMonth, setCalMonth] = useState(() => new Date().getMonth());
+  const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
+
+  // local profile events (no backend)
+  const [activities, setActivities] = useState<Activity[]>([]);
+
+  // modal state (create)
+  const [isAddEventOpen, setIsAddEventOpen] = useState(false);
+  const [isCreatingEvent, setIsCreatingEvent] = useState(false);
+  const [createEventError, setCreateEventError] = useState<string | null>(null);
+
+  // Event details modal state
+  const [openEventDetails, setOpenEventDetails] = useState(false);
+  const [activeActivity, setActiveActivity] = useState<Activity | null>(null);
+
+  function openActivity(activityId: string) {
+    const found = activities.find((a) => a.id === activityId) ?? null;
+    setActiveActivity(found);
+    setOpenEventDetails(!!found);
+  }
+
+  function closeActivity() {
+    setOpenEventDetails(false);
+    setActiveActivity(null);
+  }
+
+  function goPrevMonth() {
+    setSelectedDate(null);
+    setCalMonth((m) => {
+      if (m === 0) {
+        setCalYear((y) => y - 1);
+        return 11;
+      }
+      return m - 1;
+    });
+  }
+
+  function goNextMonth() {
+    setSelectedDate(null);
+    setCalMonth((m) => {
+      if (m === 11) {
+        setCalYear((y) => y + 1);
+        return 0;
+      }
+      return m + 1;
+    });
+  }
+
+  const activitiesForSelectedDay = useMemo(() => {
+    if (!selectedDate) return [];
+    const key = dateKeyLocal(selectedDate);
+    return activities
+      .filter((a) => dateKeyLocal(new Date(a.scheduledAt)) === key)
+      .sort((a, b) => +new Date(a.scheduledAt) - +new Date(b.scheduledAt));
+  }, [activities, selectedDate]);
+
+  async function handleCreateEvent(input: EventDetailInput) {
+    try {
+      setIsCreatingEvent(true);
+      setCreateEventError(null);
+
+      const scheduledAt = buildScheduledAt(input);
+
+      // store type + end time tags for dots + modal time range
+      const taggedDescription = withTags(input.description?.trim() || undefined, input);
+
+      const createInput: CreateActivityInput = {
+        title: input.name,
+        description: taggedDescription,
+        activityType: 'OTHER', // CalendarGrid uses TT_TYPE for color
+        scheduledAt,
+      };
+
+      const created: Activity = {
+        id: `profile-${Date.now()}`,
+        title: createInput.title,
+        description: createInput.description ?? null,
+        activityType: createInput.activityType,
+        status: 'SCHEDULED',
+        scheduledAt: createInput.scheduledAt,
+        startedAt: null,
+        completedAt: null,
+        householdId: 'profile',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        participants: [],
+        checkIns: [],
+      };
+
+      setActivities((prev) => [created, ...prev]);
+      setIsAddEventOpen(false);
+    } catch {
+      setCreateEventError('Failed to create event.');
+    } finally {
+      setIsCreatingEvent(false);
+    }
+  }
 
   return (
     <div className="min-h-screen bg-base">
@@ -82,9 +232,7 @@ export default function ProfilePage() {
               {loading ? 'Loading…' : user?.name ?? 'Unknown User'}
             </h1>
 
-            <p className="text-text-secondary text-sm mb-3">
-              {loading ? '' : user?.email ?? ''}
-            </p>
+            <p className="text-text-secondary text-sm mb-3">{loading ? '' : user?.email ?? ''}</p>
 
             {error && (
               <div className="mt-2 inline-block px-3 py-2 bg-urgent/10 border border-urgent/30 rounded-sm text-urgent text-sm">
@@ -95,21 +243,15 @@ export default function ProfilePage() {
             <div className="flex gap-6 mt-3">
               <div className="flex flex-col">
                 <span className="text-2xl font-bold text-sage">0</span>
-                <span className="text-[13px] text-text-secondary uppercase tracking-wide">
-                  Active Tasks
-                </span>
+                <span className="text-[13px] text-text-secondary uppercase tracking-wide">Active Tasks</span>
               </div>
               <div className="flex flex-col">
                 <span className="text-2xl font-bold text-sage">0</span>
-                <span className="text-[13px] text-text-secondary uppercase tracking-wide">
-                  Households
-                </span>
+                <span className="text-[13px] text-text-secondary uppercase tracking-wide">Households</span>
               </div>
               <div className="flex flex-col">
                 <span className="text-2xl font-bold text-sage">0</span>
-                <span className="text-[13px] text-text-secondary uppercase tracking-wide">
-                  Completed
-                </span>
+                <span className="text-[13px] text-text-secondary uppercase tracking-wide">Completed</span>
               </div>
             </div>
           </div>
@@ -129,7 +271,6 @@ export default function ProfilePage() {
         <div className="bg-surface rounded-md p-6 shadow-sm border border-divider">
           <div className="flex justify-between items-center mb-6 pb-4 border-b border-divider">
             <h2 className="text-xl font-semibold text-sage">My Tasks</h2>
-            {/* TODO: Task creation button. The tasks are personal and do not belong any household. */}
             <button
               className="px-5 py-2.5 rounded-sm bg-sage text-white font-medium flex items-center gap-2 transition-all hover:bg-sage-hover hover:-translate-y-px"
               type="button"
@@ -139,7 +280,6 @@ export default function ProfilePage() {
             </button>
           </div>
 
-          {/*TODO: Fetch all tasks for this user*/}
           <div className="text-text-secondary text-sm">
             No chores yet. Create your first household to start adding chores.
           </div>
@@ -151,6 +291,11 @@ export default function ProfilePage() {
             <button
               className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium flex items-center gap-2 transition-all hover:bg-base hover:border-sage"
               type="button"
+              onClick={() => {
+                setIsAddEventOpen(true);
+                setCreateEventError(null);
+              }}
+              disabled={loading || !!error}
             >
               <Plus className="w-4 h-4" />
               Add Event
@@ -158,12 +303,13 @@ export default function ProfilePage() {
           </div>
 
           <div className="flex justify-between items-center mb-4">
-            <span className="font-semibold text-base">February 2026</span>
+            <span className="font-semibold text-base text-text-primary">{monthLabel(calYear, calMonth)}</span>
             <div className="flex gap-2">
               <button
                 className="w-8 h-8 border border-divider bg-transparent rounded text-text-primary hover:bg-soft-highlight hover:border-sage transition-all"
                 type="button"
                 aria-label="Previous month"
+                onClick={goPrevMonth}
               >
                 &larr;
               </button>
@@ -171,52 +317,47 @@ export default function ProfilePage() {
                 className="w-8 h-8 border border-divider bg-transparent rounded text-text-primary hover:bg-soft-highlight hover:border-sage transition-all"
                 type="button"
                 aria-label="Next month"
+                onClick={goNextMonth}
               >
                 &rarr;
               </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-7 gap-1">
-            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
-              <div
-                key={d}
-                className="text-center text-xs font-semibold text-text-secondary py-2"
-              >
-                {d}
-              </div>
-            ))}
+          <CalendarGrid
+            year={calYear}
+            month={calMonth}
+            activities={activities}
+            selectedDate={selectedDate}
+            onDayClick={(d) => setSelectedDate(d)}
+          />
 
-            {calendarDays.map((d, i) => (
-              <div
-                key={i}
-                className={`aspect-square border rounded p-1 text-sm cursor-pointer transition-all ${
-                  d.today
-                    ? 'bg-sage text-white font-semibold border-sage'
-                    : d.other
-                      ? 'border-divider text-text-secondary opacity-40 bg-surface'
-                      : 'border-divider bg-surface hover:border-sage hover:bg-soft-highlight'
-                }`}
-              >
-                {d.day}
-                {'events' in d && d.events && (
-                  <div className="flex gap-0.5 mt-1 flex-wrap">
-                    {d.events.map((e, j) => (
-                      <div
-                        key={j}
-                        className={`w-1.5 h-1.5 rounded-full ${eventDotColors[e]}`}
-                      />
-                    ))}
-                  </div>
-                )}
+          <div className="mt-5">
+            <div className="text-sm font-semibold text-text-primary">
+              {selectedDate
+                ? `Events on ${selectedDate.toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                  })}`
+                : 'Select a day to see events'}
+            </div>
+
+            {selectedDate && activitiesForSelectedDay.length === 0 ? (
+              <div className="text-sm text-text-secondary mt-2">No events scheduled for this day.</div>
+            ) : (
+              <div className="mt-3 flex flex-col gap-3">
+                {activitiesForSelectedDay.map((a) => (
+                  <ActivityCard key={a.id} activity={a} currentUserId={user?.id} onClick={openActivity} />
+                ))}
               </div>
-            ))}
+            )}
           </div>
 
-          <div className="mt-4 flex gap-4 text-[13px]">
+          <div className="mt-4 flex gap-4 text-[13px] text-text-secondary">
             <div className="flex items-center gap-1.5">
               <div className="w-1.5 h-1.5 rounded-full bg-sage" />
-              <span>My Tasks</span>
+              <span>Personal Events</span>
             </div>
             <div className="flex items-center gap-1.5">
               <div className="w-1.5 h-1.5 rounded-full bg-terracotta" />
@@ -225,6 +366,47 @@ export default function ProfilePage() {
           </div>
         </div>
       </div>
+
+      <CreateEventModal
+        open={isAddEventOpen}
+        mode="create"
+        context="profile"
+        isSubmitting={isCreatingEvent}
+        error={createEventError}
+        onClose={() => {
+          if (!isCreatingEvent) {
+            setIsAddEventOpen(false);
+            setCreateEventError(null);
+          }
+        }}
+        onSave={handleCreateEvent}
+      />
+
+      {/* Profile Event Details Modal (THIS was missing before) */}
+      <BaseModal
+        open={openEventDetails}
+        ariaLabel="Event details"
+        title={activeActivity?.title ?? 'Event Details'}
+        subtitle={
+          activeActivity
+            ? `${prettySubtypeTitle(extractTag(activeActivity.description, 'TT_TYPE'))} • ${formatTimeRange(activeActivity)}`
+            : undefined
+        }
+        onClose={closeActivity}
+        maxWidthClassName="max-w-[520px]"
+      >
+        <div className="flex flex-col gap-4">
+          <div className="text-sm text-text-secondary whitespace-pre-wrap">
+            {activeActivity?.description ? stripTags(activeActivity.description) : 'No description.'}
+          </div>
+
+          <div className="flex justify-end">
+            <Button type="button" variant="secondary" onClick={closeActivity}>
+              Close
+            </Button>
+          </div>
+        </div>
+      </BaseModal>
     </div>
   );
 }
