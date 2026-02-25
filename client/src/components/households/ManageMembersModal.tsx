@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { HouseholdMember } from '@/types/households';
 import { getInitials, getAvatarColor } from '@/types/households';
-import { createInviteApi, removeMemberApi, promoteMemberApi } from '@/lib/households.api';
+import { createInviteApi, getActiveInviteApi, expireInviteApi, removeMemberApi, promoteMemberApi } from '@/lib/households.api';
 
 type Props = {
   open: boolean;
@@ -25,22 +25,70 @@ export default function ManageMembersModal({
   onMembersChanged,
 }: Props) {
   const [inviteCode, setInviteCode] = useState<string | null>(null);
+  const [inviteExpiresAt, setInviteExpiresAt] = useState<string | null>(null);
   const [inviteLoading, setInviteLoading] = useState(false);
+  const [inviteFetching, setInviteFetching] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  if (!open) return null;
+  const [copied, setCopied] = useState(false);
 
   const isAdmin = myRole === 'ADMIN';
+
+  // Fetch active invite when modal opens
+  useEffect(() => {
+    if (!open || !isAdmin) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        setInviteFetching(true);
+        const active = await getActiveInviteApi(householdId);
+        if (!cancelled) {
+          setInviteCode(active?.code ?? null);
+          setInviteExpiresAt(active?.expiresAt ?? null);
+        }
+      } catch {
+        // Non-critical, just don't show an invite
+      } finally {
+        if (!cancelled) setInviteFetching(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [open, householdId, isAdmin]);
+
+  // Reset copied state after 2s
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(t);
+  }, [copied]);
+
+  if (!open) return null;
 
   async function handleGenerateInvite() {
     try {
       setInviteLoading(true);
       setError(null);
-      const { code } = await createInviteApi(householdId);
+      const { code, expiresAt } = await createInviteApi(householdId);
       setInviteCode(code);
+      setInviteExpiresAt(expiresAt);
     } catch {
       setError('Failed to generate invite code.');
+    } finally {
+      setInviteLoading(false);
+    }
+  }
+
+  async function handleExpireInvite() {
+    try {
+      setInviteLoading(true);
+      setError(null);
+      await expireInviteApi(householdId);
+      setInviteCode(null);
+      setInviteExpiresAt(null);
+    } catch {
+      setError('Failed to expire invite code.');
     } finally {
       setInviteLoading(false);
     }
@@ -92,7 +140,18 @@ export default function ManageMembersModal({
   function handleCopyCode() {
     if (inviteCode) {
       navigator.clipboard.writeText(inviteCode);
+      setCopied(true);
     }
+  }
+
+  function formatExpiry(dateStr: string): string {
+    const d = new Date(dateStr);
+    const now = new Date();
+    const diffMs = d.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+    if (diffDays <= 0) return 'Expired';
+    if (diffDays === 1) return 'Expires in 1 day';
+    return `Expires in ${diffDays} days`;
   }
 
   return (
@@ -188,18 +247,35 @@ export default function ManageMembersModal({
               Invite New Member
             </div>
 
-            {inviteCode ? (
-              <div className="flex items-center gap-2">
-                <code className="flex-1 px-4 py-3 rounded-sm border border-divider bg-surface text-text-primary font-mono text-lg tracking-wider text-center">
-                  {inviteCode}
-                </code>
-                <button
-                  type="button"
-                  onClick={handleCopyCode}
-                  className="px-4 py-3 rounded-sm bg-sage text-white font-medium text-sm transition hover:bg-sage-hover"
-                >
-                  Copy
-                </button>
+            {inviteFetching ? (
+              <div className="text-sm text-text-secondary">Loading invite...</div>
+            ) : inviteCode ? (
+              <div>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 px-4 py-3 rounded-sm border border-divider bg-surface text-text-primary font-mono text-lg tracking-wider text-center">
+                    {inviteCode}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={handleCopyCode}
+                    className="px-4 py-3 rounded-sm bg-sage text-white font-medium text-sm transition hover:bg-sage-hover"
+                  >
+                    {copied ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+                <div className="mt-2 flex items-center justify-between">
+                  <p className="text-[12px] text-text-secondary">
+                    {inviteExpiresAt ? formatExpiry(inviteExpiresAt) : 'Expires in 7 days'}. Anyone with this code can join.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleExpireInvite}
+                    disabled={inviteLoading}
+                    className="text-[12px] font-medium text-urgent hover:underline disabled:opacity-50"
+                  >
+                    Expire Code
+                  </button>
+                </div>
               </div>
             ) : (
               <button
@@ -211,9 +287,6 @@ export default function ManageMembersModal({
                 {inviteLoading ? 'Generating...' : 'Generate Invite Code'}
               </button>
             )}
-            <p className="mt-2 text-[12px] text-text-secondary">
-              Share this code with someone to let them join. Expires in 7 days.
-            </p>
           </div>
         )}
 

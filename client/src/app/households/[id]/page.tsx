@@ -1,16 +1,16 @@
-// src/app/households/[id]/page.tsx
 'use client';
 
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import AppNavbar from '@/components/shared/AppNavbar';
 import { getHousehold } from '@/lib/households';
-import { listTasksApi, createTaskApi, completeTaskApi } from '@/lib/tasks.api';
+import { listTasksApi, createTaskApi, completeTaskApi, updateTaskApi, deleteTaskApi } from '@/lib/tasks.api';
 import type { Household } from '@/types/households';
 import { getInitials, getAvatarColor } from '@/types/households';
-import type { Task, CreateTaskInput } from '@/types/tasks';
+import type { Task, CreateTaskInput, UpdateTaskInput } from '@/types/tasks';
 import AddTaskModal from '@/components/households/AddTaskModal';
 import ManageMembersModal from '@/components/households/ManageMembersModal';
+import CompleteTaskModal from '@/components/modals/CompleteTaskModal';
 import { useAuth } from '@/contexts/AuthContext';
 
 //report issue feature 
@@ -123,8 +123,15 @@ export default function HouseholdDashboardPage() {
     // Manage members modal state
     const [isMembersOpen, setIsMembersOpen] = useState(false);
 
-    // Completing task state
-    const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
+    // Complete task modal state
+    const [completingTask, setCompletingTask] = useState<Task | null>(null);
+    const [isCompleting, setIsCompleting] = useState(false);
+    const [completeError, setCompleteError] = useState<string | null>(null);
+
+    // Edit task modal state
+    const [editingTask, setEditingTask] = useState<Task | null>(null);
+    const [isEditingTask, setIsEditingTask] = useState(false);
+    const [editTaskError, setEditTaskError] = useState<string | null>(null);
 
     const fetchHousehold = useCallback(async () => {
         if (!id) return;
@@ -206,16 +213,48 @@ export default function HouseholdDashboardPage() {
         }
     }
 
-    async function handleCompleteTask(taskId: string) {
-        if (!id) return;
+    async function handleCompleteTask(input: { notes?: string }) {
+        if (!id || !completingTask) return;
         try {
-            setCompletingTaskId(taskId);
-            await completeTaskApi(id, taskId);
+            setIsCompleting(true);
+            setCompleteError(null);
+            await completeTaskApi(id, completingTask.id, input);
+            setCompletingTask(null);
             await fetchTasks();
         } catch {
-            // Could show error toast
+            setCompleteError('Failed to complete task. Please try again.');
         } finally {
-            setCompletingTaskId(null);
+            setIsCompleting(false);
+        }
+    }
+
+    async function handleUpdateTask(input: UpdateTaskInput) {
+        if (!id || !editingTask) return;
+        try {
+            setIsEditingTask(true);
+            setEditTaskError(null);
+            await updateTaskApi(id, editingTask.id, input);
+            setEditingTask(null);
+            await fetchTasks();
+        } catch {
+            setEditTaskError('Failed to update task. Please try again.');
+        } finally {
+            setIsEditingTask(false);
+        }
+    }
+
+    async function handleDeleteTask() {
+        if (!id || !editingTask) return;
+        try {
+            setIsEditingTask(true);
+            setEditTaskError(null);
+            await deleteTaskApi(id, editingTask.id);
+            setEditingTask(null);
+            await fetchTasks();
+        } catch {
+            setEditTaskError('Failed to delete task. Please try again.');
+        } finally {
+            setIsEditingTask(false);
         }
     }
 
@@ -352,7 +391,6 @@ export default function HouseholdDashboardPage() {
                                 const done = isTaskCompleted(task);
                                 const assignee = task.assignments[0]?.user;
                                 const priority = task.priority || 'medium';
-                                const isCompleting = completingTaskId === task.id;
 
                                 return (
                                     <div
@@ -361,13 +399,11 @@ export default function HouseholdDashboardPage() {
                                     >
                                         <div
                                             onClick={() => {
-                                                if (!done && !isCompleting) handleCompleteTask(task.id);
+                                                if (!done) setCompletingTask(task);
                                             }}
                                             className={`w-6 h-6 rounded flex-shrink-0 mt-0.5 border-2 transition-all flex items-center justify-center ${done
                                                 ? 'bg-success border-success text-white cursor-default'
-                                                : isCompleting
-                                                    ? 'border-sage animate-pulse cursor-wait'
-                                                    : 'border-divider hover:border-sage cursor-pointer'
+                                                : 'border-divider hover:border-sage cursor-pointer'
                                                 }`}
                                         >
                                             {done && <span className="text-base leading-none">&#10003;</span>}
@@ -380,6 +416,26 @@ export default function HouseholdDashboardPage() {
                                                 <span className={`px-2 py-0.5 rounded text-[11px] font-semibold uppercase ${priorityStyles[priority]}`}>
                                                     {priorityLabels[priority]}
                                                 </span>
+
+                                                {/* Edit/Delete buttons for non-completed tasks (creator or admin) */}
+                                                {!done && (task.creatorId === user?.id || isAdmin) && (
+                                                    <div className="flex gap-1 ml-1">
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setEditingTask(task);
+                                                            }}
+                                                            className="p-1.5 rounded text-text-secondary hover:text-sage hover:bg-sage/10 transition"
+                                                            title="Edit task"
+                                                        >
+                                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                                            </svg>
+                                                        </button>
+                                                    </div>
+                                                )}
                                             </div>
                                             <div className="flex items-center gap-4 text-[13px] text-text-secondary flex-wrap">
                                                 <div className="flex items-center gap-1">
@@ -497,18 +553,38 @@ export default function HouseholdDashboardPage() {
                     }}
                     onCreate={handleCreateTask}
                 />
+            )}
 
-                {user && (
-                    <ManageMembersModal
-                        open={isMembersOpen}
-                        householdId={id || ''}
-                        members={members}
-                        myRole={household.myRole}
-                        currentUserId={user.id}
-                        onClose={() => setIsMembersOpen(false)}
-                        onMembersChanged={handleMembersChanged}
-                    />
-                )}
-            </div>
-        </div>);
+            <CompleteTaskModal
+                open={!!completingTask}
+                taskTitle={completingTask?.title || ''}
+                isSubmitting={isCompleting}
+                error={completeError}
+                onClose={() => {
+                    if (!isCompleting) {
+                        setCompletingTask(null);
+                        setCompleteError(null);
+                    }
+                }}
+                onComplete={handleCompleteTask}
+            />
+
+            <AddTaskModal
+                open={!!editingTask}
+                isSubmitting={isEditingTask}
+                error={editTaskError}
+                members={members}
+                editingTask={editingTask}
+                onClose={() => {
+                    if (!isEditingTask) {
+                        setEditingTask(null);
+                        setEditTaskError(null);
+                    }
+                }}
+                onCreate={handleCreateTask}
+                onUpdate={handleUpdateTask}
+                onDelete={handleDeleteTask}
+            />
+        </div>
+    );
 }
