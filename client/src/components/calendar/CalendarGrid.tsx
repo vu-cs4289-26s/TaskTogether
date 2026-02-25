@@ -1,52 +1,158 @@
 'use client';
 
-import type { Activity } from '@/types/activities';
-
-// TODO: Implement CalendarGrid component
-// - Render a 7-column grid for the given month/year
-// - Accept activities array and highlight days that have scheduled activities
-// - Show colored dots based on activityType:
-//     CHORE: bg-sage, BONDING: bg-terracotta, HOMEWORK: bg-info, OTHER: bg-pending
-// - Highlight today's date with bg-sage text-white
-// - Gray out days from previous/next months (opacity-40)
-// - Support onDayClick callback for selecting a day
-// - Reference: the static calendar in client/src/app/profile/page.tsx for styling patterns
+import type { Activity, ActivityType } from '@/types/activities';
 
 interface CalendarGridProps {
   year: number;
-  month: number; // 0-indexed (0 = January)
+  month: number; // 0-indexed
   activities: Activity[];
   onDayClick?: (date: Date) => void;
   selectedDate?: Date | null;
 }
 
-export default function CalendarGrid({
-  year,
-  month,
-  activities,
-  onDayClick,
-  selectedDate,
-}: CalendarGridProps) {
-  // TODO: Calculate days in month, first day of week, days from prev/next months
-  // TODO: Group activities by date for dot rendering
+type DayCell = {
+  date: Date;
+  inMonth: boolean;
+  isToday: boolean;
+};
+
+function pad2(n: number) {
+  return String(n).padStart(2, '0');
+}
+
+function dateKey(d: Date) {
+  // local date key (not UTC)
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function sameDay(a: Date, b: Date) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function extractTag(desc: string | null | undefined, key: string): string | null {
+  if (!desc) return null;
+  const re = new RegExp(`\\[\\[${key}:([^\\]]+)\\]\\]`, 'i');
+  const m = desc.match(re);
+  return m?.[1]?.trim() ?? null;
+}
+
+/**
+ * We support two "type systems":
+ * 1) Household event subtype stored in [[TT_TYPE:meeting|shared-space|social|maintenance|other]]
+ * 2) Profile event subtype stored in [[TT_TYPE:personal|household]]
+ *
+ * If TT_TYPE exists, we use it for dot colors.
+ * Otherwise we fall back to ActivityType (CHORE/BONDING/HOMEWORK/OTHER).
+ */
+type DotKey =
+  | 'meeting'
+  | 'shared-space'
+  | 'social'
+  | 'maintenance'
+  | 'other'
+  | 'personal'
+  | 'household'
+  | ActivityType;
+
+const dotColorByKey: Record<string, string> = {
+  // ----- Household subtypes -----
+  meeting: 'bg-text-secondary',          // gray
+  'shared-space': 'bg-terracotta',       // terracotta/red
+  social: 'bg-sage',                     // green (sage)
+  maintenance: 'bg-red-500',            // BLUE (different from social)
+  other: 'bg-pending',                   // orange/yellow
+
+  // ----- Profile subtypes -----
+  personal: 'bg-sage',                   // green
+  household: 'bg-terracotta',            // terracotta
+};
+
+function normalizeTypeKey(raw: string | null): string | null {
+  if (!raw) return null;
+  const s = raw.trim().toLowerCase();
+  // allow a couple aliases just in case
+  if (s === 'sharedspace' || s === 'shared_space') return 'shared-space';
+  return s;
+}
+
+export default function CalendarGrid({ year, month, activities, onDayClick, selectedDate }: CalendarGridProps) {
+  const today = new Date();
+
+  // Group dot-keys by day
+  const byDay = new Map<string, string[]>();
+
+  for (const a of activities) {
+    const d = new Date(a.scheduledAt);
+    const key = dateKey(d);
+
+    // Prefer TT_TYPE for dot color if present
+    const tt = normalizeTypeKey(extractTag(a.description, 'TT_TYPE'));
+    const dotKey: string = tt ?? a.activityType; // fallback to ActivityType enum
+
+    const arr = byDay.get(key) ?? [];
+    arr.push(dotKey);
+    byDay.set(key, arr);
+  }
+
+  // Build 6-week grid (42 cells)
+  const firstOfMonth = new Date(year, month, 1);
+  const startDow = firstOfMonth.getDay(); // 0=Sun
+  const startDate = new Date(year, month, 1 - startDow);
+
+  const cells: DayCell[] = [];
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(startDate);
+    d.setDate(startDate.getDate() + i);
+
+    cells.push({
+      date: d,
+      inMonth: d.getMonth() === month,
+      isToday: sameDay(d, today),
+    });
+  }
 
   return (
     <div>
       {/* Day headers */}
       <div className="grid grid-cols-7 gap-1">
         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
-          <div
-            key={d}
-            className="text-center text-xs font-semibold text-text-secondary py-2"
-          >
+          <div key={d} className="text-center text-xs font-semibold text-text-secondary py-2">
             {d}
           </div>
         ))}
       </div>
 
-      {/* TODO: Generate day cells for the month */}
+      {/* Day cells */}
       <div className="grid grid-cols-7 gap-1">
-        {/* Placeholder — implement day cell rendering */}
+        {cells.map((c, idx) => {
+          const key = dateKey(c.date);
+          const keys = byDay.get(key) ?? [];
+          const uniqueKeys = Array.from(new Set(keys)).slice(0, 4);
+
+          const isSelected = selectedDate ? sameDay(c.date, selectedDate) : false;
+
+          const base = 'aspect-square border rounded p-1 text-sm cursor-pointer transition-all';
+          const outside = 'border-divider text-text-secondary opacity-40 bg-surface';
+          const normal = 'border-divider bg-surface hover:border-sage hover:bg-soft-highlight';
+          const todayStyle = 'bg-sage text-white font-semibold border-sage';
+
+          const selectedRing = isSelected ? 'ring-2 ring-sage ring-offset-2 ring-offset-surface' : '';
+          const cls = `${base} ${c.isToday ? todayStyle : c.inMonth ? normal : outside} ${selectedRing}`;
+
+          return (
+            <div key={idx} className={cls} onClick={() => onDayClick?.(c.date)} title={key}>
+              {c.date.getDate()}
+
+              {uniqueKeys.length > 0 && (
+                <div className="flex gap-0.5 mt-1 flex-wrap">
+                  {uniqueKeys.map((k) => (
+                    <div key={k} className={`w-1.5 h-1.5 rounded-full ${dotColorByKey[k] ?? 'bg-pending'}`} />
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

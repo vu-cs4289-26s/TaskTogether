@@ -7,8 +7,8 @@ type Props = {
   title?: string;
   subtitle?: string;
   ariaLabel: string;
-  isBlocking?: boolean; 
-  maxWidthClassName?: string; 
+  isBlocking?: boolean;
+  maxWidthClassName?: string;
   onClose: () => void;
   children: ReactNode;
 };
@@ -27,7 +27,7 @@ export default function BaseModal({
 
   return (
     <div
-      className="fixed inset-0 z-[200] bg-black/40 flex items-center justify-center px-4"
+      className="fixed inset-0 z-[200] bg-black/40 flex items-start justify-center px-4 py-10 overflow-y-auto"
       role="dialog"
       aria-modal="true"
       aria-label={ariaLabel}
@@ -40,7 +40,7 @@ export default function BaseModal({
       tabIndex={-1}
     >
       <div
-        className={`w-full ${maxWidthClassName} bg-surface rounded-md shadow-lg border border-divider p-8`}
+        className={`w-full ${maxWidthClassName} bg-surface rounded-md shadow-lg border border-divider p-8 my-auto`}
         onMouseDown={(e) => e.stopPropagation()}
       >
         {(title || subtitle) && (
