@@ -13,6 +13,9 @@ import AddTaskModal from '@/components/households/AddTaskModal';
 import ManageMembersModal from '@/components/households/ManageMembersModal';
 import { useAuth } from '@/contexts/AuthContext';
 
+//report issue feature 
+import IssuesSection from '@/components/issues/IssueSection';
+
 const priorityStyles: Record<string, string> = {
     high: 'bg-urgent/10 text-urgent border border-urgent',
     medium: 'bg-pending/10 text-pending border border-pending',
@@ -34,32 +37,32 @@ const priorityTextColors: Record<string, string> = {
 };
 
 // Static issues data (no backend yet)
-const issues = [
-    {
-        id: '1',
-        title: 'Broken dishwasher - not draining',
-        reporter: 'Sarah',
-        time: 'Feb 3, 2:45 PM',
-        priority: 'high',
-        type: 'Maintenance',
-    },
-    {
-        id: '2',
-        title: 'Noise levels after 11 PM',
-        reporter: 'Michael',
-        time: 'Feb 2, 8:20 AM',
-        priority: 'medium',
-        type: 'Conflict',
-    },
-    {
-        id: '3',
-        title: 'Kitchen light bulb needs replacing',
-        reporter: 'You',
-        time: 'Feb 1, 6:15 PM',
-        priority: 'low',
-        type: 'Maintenance',
-    },
-];
+// const issues = [
+//     {
+//         id: '1',
+//         title: 'Broken dishwasher - not draining',
+//         reporter: 'Sarah',
+//         time: 'Feb 3, 2:45 PM',
+//         priority: 'high',
+//         type: 'Maintenance',
+//     },
+//     {
+//         id: '2',
+//         title: 'Noise levels after 11 PM',
+//         reporter: 'Michael',
+//         time: 'Feb 2, 8:20 AM',
+//         priority: 'medium',
+//         type: 'Conflict',
+//     },
+//     {
+//         id: '3',
+//         title: 'Kitchen light bulb needs replacing',
+//         reporter: 'You',
+//         time: 'Feb 1, 6:15 PM',
+//         priority: 'low',
+//         type: 'Maintenance',
+//     },
+// ];
 
 // Static calendar data
 const calendarDays = [
@@ -111,6 +114,11 @@ export default function HouseholdDashboardPage() {
     const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
     const [isCreatingTask, setIsCreatingTask] = useState(false);
     const [createTaskError, setCreateTaskError] = useState<string | null>(null);
+
+    //added report issue modal state
+    const [isReportIssueOpen, setIsReportIssueOpen] = useState(false);
+    const [isSubmittingIssue, setIsSubmittingIssue] = useState(false);
+    const [issueError, setIssueError] = useState<string | null>(null);
 
     // Manage members modal state
     const [isMembersOpen, setIsMembersOpen] = useState(false);
@@ -322,11 +330,10 @@ export default function HouseholdDashboardPage() {
                             <button
                                 key={tab}
                                 onClick={() => setActiveTab(tab)}
-                                className={`px-4 py-2 rounded-sm text-sm font-medium transition-all capitalize ${
-                                    activeTab === tab
-                                        ? 'bg-soft-highlight text-text-primary'
-                                        : 'text-text-secondary hover:bg-base'
-                                }`}
+                                className={`px-4 py-2 rounded-sm text-sm font-medium transition-all capitalize ${activeTab === tab
+                                    ? 'bg-soft-highlight text-text-primary'
+                                    : 'text-text-secondary hover:bg-base'
+                                    }`}
                             >
                                 {tab}
                             </button>
@@ -356,13 +363,12 @@ export default function HouseholdDashboardPage() {
                                             onClick={() => {
                                                 if (!done && !isCompleting) handleCompleteTask(task.id);
                                             }}
-                                            className={`w-6 h-6 rounded flex-shrink-0 mt-0.5 border-2 transition-all flex items-center justify-center ${
-                                                done
-                                                    ? 'bg-success border-success text-white cursor-default'
-                                                    : isCompleting
+                                            className={`w-6 h-6 rounded flex-shrink-0 mt-0.5 border-2 transition-all flex items-center justify-center ${done
+                                                ? 'bg-success border-success text-white cursor-default'
+                                                : isCompleting
                                                     ? 'border-sage animate-pulse cursor-wait'
                                                     : 'border-divider hover:border-sage cursor-pointer'
-                                            }`}
+                                                }`}
                                         >
                                             {done && <span className="text-base leading-none">&#10003;</span>}
                                         </div>
@@ -436,13 +442,12 @@ export default function HouseholdDashboardPage() {
                         {calendarDays.map((d, i) => (
                             <div
                                 key={i}
-                                className={`aspect-square border rounded p-1 text-sm cursor-pointer transition-all ${
-                                    d.today
-                                        ? 'bg-sage text-white font-semibold border-sage'
-                                        : d.other
+                                className={`aspect-square border rounded p-1 text-sm cursor-pointer transition-all ${d.today
+                                    ? 'bg-sage text-white font-semibold border-sage'
+                                    : d.other
                                         ? 'border-divider text-text-secondary opacity-40 bg-surface'
                                         : 'border-divider bg-surface hover:border-sage hover:bg-soft-highlight'
-                                }`}
+                                    }`}
                             >
                                 {d.day}
                                 {d.events && (
@@ -472,78 +477,38 @@ export default function HouseholdDashboardPage() {
                     </div>
                 </div>
 
-                {/* Report Issues - Full Width (static) */}
-                <div className="lg:col-span-2 bg-surface rounded-md p-6 shadow-sm border border-divider">
-                    <div className="flex justify-between items-center mb-6 pb-4 border-b border-divider">
-                        <h2 className="text-xl font-semibold text-sage">Report Issues</h2>
-                        <button className="px-5 py-2.5 rounded-sm bg-sage text-white font-medium flex items-center gap-2 transition-all hover:bg-sage-hover hover:-translate-y-px">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <line x1="12" y1="5" x2="12" y2="19" />
-                                <line x1="5" y1="12" x2="19" y2="12" />
-                            </svg>
-                            Report Issue
-                        </button>
-                    </div>
+                {/* Report Issues - Full Width (static)*/}
 
-                    <div className="flex flex-col gap-4">
-                        {issues.map((issue) => (
-                            <div
-                                key={issue.id}
-                                className={`p-4 border-l-4 rounded-sm bg-base ${issueBorderColors[issue.priority]}`}
-                            >
-                                <div className="flex justify-between items-start mb-1">
-                                    <span className="font-semibold">{issue.title}</span>
-                                    <span
-                                        className={`px-2 py-1 rounded text-[11px] font-semibold uppercase border ${
-                                            issue.type === 'Conflict'
-                                                ? 'bg-urgent/10 text-urgent border-urgent'
-                                                : 'bg-sage/10 text-sage border-sage'
-                                        }`}
-                                    >
-                                        {issue.type}
-                                    </span>
-                                </div>
-                                <div className="flex gap-4 text-[13px] text-text-secondary flex-wrap">
-                                    <span>Reported by {issue.reporter}</span>
-                                    <span>&bull;</span>
-                                    <span>{issue.time}</span>
-                                    <span>&bull;</span>
-                                    <span className={`font-semibold capitalize ${priorityTextColors[issue.priority]}`}>
-                                        {issue.priority} Priority
-                                    </span>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            </div>
 
-            {/* Modals */}
-            <AddTaskModal
-                open={isAddTaskOpen}
-                isSubmitting={isCreatingTask}
-                error={createTaskError}
-                members={members}
-                onClose={() => {
-                    if (!isCreatingTask) {
-                        setIsAddTaskOpen(false);
-                        setCreateTaskError(null);
-                    }
-                }}
-                onCreate={handleCreateTask}
-            />
+                <IssuesSection householdId={id || ''} isAdmin={isAdmin} />
 
-            {user && (
-                <ManageMembersModal
-                    open={isMembersOpen}
-                    householdId={id || ''}
+
+                {/* Modals */}
+                <AddTaskModal
+                    open={isAddTaskOpen}
+                    isSubmitting={isCreatingTask}
+                    error={createTaskError}
                     members={members}
-                    myRole={household.myRole}
-                    currentUserId={user.id}
-                    onClose={() => setIsMembersOpen(false)}
-                    onMembersChanged={handleMembersChanged}
+                    onClose={() => {
+                        if (!isCreatingTask) {
+                            setIsAddTaskOpen(false);
+                            setCreateTaskError(null);
+                        }
+                    }}
+                    onCreate={handleCreateTask}
                 />
-            )}
-        </div>
-    );
+
+                {user && (
+                    <ManageMembersModal
+                        open={isMembersOpen}
+                        householdId={id || ''}
+                        members={members}
+                        myRole={household.myRole}
+                        currentUserId={user.id}
+                        onClose={() => setIsMembersOpen(false)}
+                        onMembersChanged={handleMembersChanged}
+                    />
+                )}
+            </div>
+        </div>);
 }

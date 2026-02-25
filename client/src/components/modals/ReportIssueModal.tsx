@@ -8,7 +8,7 @@ import Field, { inputClass } from '@/components/ui/Field';
 export type IssueType = 'maintenance' | 'conflict' | 'noise' | 'cleanliness' | 'other';
 export type IssuePriority = 'urgent' | 'medium' | 'low';
 
-export type ReportIssueInput = {
+export type ReportIssueFormValues = {
   title: string;
   type: IssueType;
   priority: IssuePriority;
@@ -18,11 +18,11 @@ export type ReportIssueInput = {
 
 type Props = {
   open: boolean;
-  initialValue?: Partial<ReportIssueInput>;
+  initialValue?: Partial<ReportIssueFormValues>;
   isSubmitting: boolean;
   error: string | null;
   onClose: () => void;
-  onSubmit: (input: ReportIssueInput) => void | Promise<void>;
+  onSubmit: (input: ReportIssueFormValues) => void | Promise<void>;
 };
 
 export default function ReportIssueModal({
