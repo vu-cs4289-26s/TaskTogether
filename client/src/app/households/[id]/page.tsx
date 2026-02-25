@@ -13,6 +13,7 @@ import ManageMembersModal from '@/components/households/ManageMembersModal';
 import CompleteTaskModal from '@/components/modals/CompleteTaskModal';
 import { useAuth } from '@/contexts/AuthContext';
 
+//report issue feature 
 import IssuesSection from '@/components/issues/IssueSection';
 
 const priorityStyles: Record<string, string> = {
@@ -22,6 +23,46 @@ const priorityStyles: Record<string, string> = {
 };
 
 const priorityLabels: Record<string, string> = { high: 'P1', medium: 'P2', low: 'P3' };
+
+const issueBorderColors: Record<string, string> = {
+    high: 'border-l-urgent',
+    medium: 'border-l-pending',
+    low: 'border-l-info',
+};
+
+const priorityTextColors: Record<string, string> = {
+    high: 'text-urgent',
+    medium: 'text-pending',
+    low: 'text-success',
+};
+
+// Static issues data (no backend yet)
+// const issues = [
+//     {
+//         id: '1',
+//         title: 'Broken dishwasher - not draining',
+//         reporter: 'Sarah',
+//         time: 'Feb 3, 2:45 PM',
+//         priority: 'high',
+//         type: 'Maintenance',
+//     },
+//     {
+//         id: '2',
+//         title: 'Noise levels after 11 PM',
+//         reporter: 'Michael',
+//         time: 'Feb 2, 8:20 AM',
+//         priority: 'medium',
+//         type: 'Conflict',
+//     },
+//     {
+//         id: '3',
+//         title: 'Kitchen light bulb needs replacing',
+//         reporter: 'You',
+//         time: 'Feb 1, 6:15 PM',
+//         priority: 'low',
+//         type: 'Maintenance',
+//     },
+// ];
 
 // Static calendar data
 const calendarDays = [
@@ -73,6 +114,11 @@ export default function HouseholdDashboardPage() {
     const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
     const [isCreatingTask, setIsCreatingTask] = useState(false);
     const [createTaskError, setCreateTaskError] = useState<string | null>(null);
+
+    //added report issue modal state
+    const [isReportIssueOpen, setIsReportIssueOpen] = useState(false);
+    const [isSubmittingIssue, setIsSubmittingIssue] = useState(false);
+    const [issueError, setIssueError] = useState<string | null>(null);
 
     // Manage members modal state
     const [isMembersOpen, setIsMembersOpen] = useState(false);
@@ -487,35 +533,25 @@ export default function HouseholdDashboardPage() {
                     </div>
                 </div>
 
-                {/* Report Issues - Full Width - Using Component from V1 */}
+                {/* Report Issues - Full Width (static)*/}
+
+
                 <IssuesSection householdId={id || ''} isAdmin={isAdmin} />
 
-            </div>
 
-            {/* Modals */}
-            <AddTaskModal
-                open={isAddTaskOpen}
-                isSubmitting={isCreatingTask}
-                error={createTaskError}
-                members={members}
-                onClose={() => {
-                    if (!isCreatingTask) {
-                        setIsAddTaskOpen(false);
-                        setCreateTaskError(null);
-                    }
-                }}
-                onCreate={handleCreateTask}
-            />
-
-            {user && (
-                <ManageMembersModal
-                    open={isMembersOpen}
-                    householdId={id || ''}
+                {/* Modals */}
+                <AddTaskModal
+                    open={isAddTaskOpen}
+                    isSubmitting={isCreatingTask}
+                    error={createTaskError}
                     members={members}
-                    myRole={household.myRole}
-                    currentUserId={user.id}
-                    onClose={() => setIsMembersOpen(false)}
-                    onMembersChanged={handleMembersChanged}
+                    onClose={() => {
+                        if (!isCreatingTask) {
+                            setIsAddTaskOpen(false);
+                            setCreateTaskError(null);
+                        }
+                    }}
+                    onCreate={handleCreateTask}
                 />
             )}
 
