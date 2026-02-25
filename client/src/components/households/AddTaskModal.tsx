@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { HouseholdMember } from '@/types/households';
-import type { CreateTaskInput, TaskPriority, RecurrencePattern } from '@/types/tasks';
+import type { CreateTaskInput, UpdateTaskInput, Task, TaskPriority, RecurrencePattern } from '@/types/tasks';
 
 type Props = {
   open: boolean;
@@ -11,7 +11,17 @@ type Props = {
   members: HouseholdMember[];
   onClose: () => void;
   onCreate: (input: CreateTaskInput) => void | Promise<void>;
+  /** If provided, modal opens in edit mode */
+  editingTask?: Task | null;
+  onUpdate?: (input: UpdateTaskInput) => void | Promise<void>;
+  onDelete?: () => void | Promise<void>;
 };
+
+function toDateInputValue(isoStr: string | null): string {
+  if (!isoStr) return '';
+  const d = new Date(isoStr);
+  return d.toISOString().split('T')[0];
+}
 
 export default function AddTaskModal({
   open,
@@ -20,7 +30,12 @@ export default function AddTaskModal({
   members,
   onClose,
   onCreate,
+  editingTask,
+  onUpdate,
+  onDelete,
 }: Props) {
+  const isEditMode = !!editingTask;
+
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [dueDate, setDueDate] = useState('');
@@ -29,6 +44,7 @@ export default function AddTaskModal({
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrencePattern, setRecurrencePattern] = useState<RecurrencePattern>('weekly');
   const [localError, setLocalError] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const titleInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -42,10 +58,23 @@ export default function AddTaskModal({
       setIsRecurring(false);
       setRecurrencePattern('weekly');
       setLocalError(null);
+      setShowDeleteConfirm(false);
       return;
     }
+
+    // Populate form with editing task values
+    if (editingTask) {
+      setTitle(editingTask.title);
+      setDescription(editingTask.description || '');
+      setDueDate(toDateInputValue(editingTask.dueDate));
+      setPriority(editingTask.priority || 'medium');
+      setAssignedToUserId(editingTask.assignments[0]?.userId || '');
+      setIsRecurring(editingTask.isRecurring);
+      setRecurrencePattern((editingTask.recurrencePattern as RecurrencePattern) || 'weekly');
+    }
+
     queueMicrotask(() => titleInputRef.current?.focus());
-  }, [open]);
+  }, [open, editingTask]);
 
   if (!open) return null;
 
@@ -57,19 +86,30 @@ export default function AddTaskModal({
     }
     setLocalError(null);
 
-    const input: CreateTaskInput = {
-      title: trimmed,
-      priority,
-    };
-    if (description.trim()) input.description = description.trim();
-    if (dueDate) input.dueDate = new Date(dueDate).toISOString();
-    if (assignedToUserId) input.assignedToUserId = assignedToUserId;
-    if (isRecurring) {
-      input.isRecurring = true;
-      input.recurrencePattern = recurrencePattern;
+    if (isEditMode && onUpdate) {
+      const input: UpdateTaskInput = {
+        title: trimmed,
+        priority,
+        description: description.trim() || null,
+        dueDate: dueDate ? new Date(dueDate).toISOString() : null,
+        isRecurring,
+        recurrencePattern: isRecurring ? recurrencePattern : undefined,
+      };
+      await onUpdate(input);
+    } else {
+      const input: CreateTaskInput = {
+        title: trimmed,
+        priority,
+      };
+      if (description.trim()) input.description = description.trim();
+      if (dueDate) input.dueDate = new Date(dueDate).toISOString();
+      if (assignedToUserId) input.assignedToUserId = assignedToUserId;
+      if (isRecurring) {
+        input.isRecurring = true;
+        input.recurrencePattern = recurrencePattern;
+      }
+      await onCreate(input);
     }
-
-    await onCreate(input);
   }
 
   return (
@@ -83,15 +123,15 @@ export default function AddTaskModal({
       }}
       role="dialog"
       aria-modal="true"
-      aria-label="Create new task"
+      aria-label={isEditMode ? 'Edit task' : 'Create new task'}
     >
       <div className="w-full max-w-[560px] bg-surface rounded-md shadow-lg border border-divider p-8 max-h-[90vh] overflow-y-auto">
         <div className="mb-6 pb-6 border-b-4 border-sage">
           <h2 className="text-2xl font-heading font-semibold text-sage">
-            Add New Chore
+            {isEditMode ? 'Edit Chore' : 'Add New Chore'}
           </h2>
           <p className="mt-1 text-sm text-text-secondary">
-            Create a task for your household
+            {isEditMode ? 'Update the task details' : 'Create a task for your household'}
           </p>
         </div>
 
@@ -178,30 +218,32 @@ export default function AddTaskModal({
             </div>
           </div>
 
-          {/* Assign To */}
-          <div className="flex flex-col gap-1">
-            <label
-              htmlFor="task-assignee"
-              className="text-sm font-medium text-sage flex items-center gap-2"
-            >
-              <span className="inline-block w-1 h-3.5 rounded-sm bg-terracotta" />
-              Assign To
-            </label>
-            <select
-              id="task-assignee"
-              value={assignedToUserId}
-              onChange={(e) => setAssignedToUserId(e.target.value)}
-              disabled={isSubmitting}
-              className="px-4 py-3 rounded-sm border border-divider bg-surface text-text-primary transition focus:outline-none focus:border-sage focus:ring-4 focus:ring-sage/10"
-            >
-              <option value="">Unassigned</option>
-              {members.map((m) => (
-                <option key={m.user.id} value={m.user.id}>
-                  {m.user.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Assign To (only in create mode) */}
+          {!isEditMode && (
+            <div className="flex flex-col gap-1">
+              <label
+                htmlFor="task-assignee"
+                className="text-sm font-medium text-sage flex items-center gap-2"
+              >
+                <span className="inline-block w-1 h-3.5 rounded-sm bg-terracotta" />
+                Assign To
+              </label>
+              <select
+                id="task-assignee"
+                value={assignedToUserId}
+                onChange={(e) => setAssignedToUserId(e.target.value)}
+                disabled={isSubmitting}
+                className="px-4 py-3 rounded-sm border border-divider bg-surface text-text-primary transition focus:outline-none focus:border-sage focus:ring-4 focus:ring-sage/10"
+              >
+                <option value="">Unassigned</option>
+                {members.map((m) => (
+                  <option key={m.user.id} value={m.user.id}>
+                    {m.user.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Recurring */}
           <div className="flex items-center gap-3">
@@ -236,24 +278,64 @@ export default function AddTaskModal({
             </div>
           )}
 
-          <div className="flex gap-4 justify-end mt-6">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isSubmitting}
-              className="px-6 py-3 rounded-sm border border-divider bg-transparent text-text-primary transition hover:bg-base disabled:opacity-60"
-            >
-              Cancel
-            </button>
+          <div className="flex gap-4 justify-between mt-6">
+            {/* Delete button (edit mode only) */}
+            {isEditMode && onDelete && (
+              <div>
+                {showDeleteConfirm ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-text-secondary">Delete?</span>
+                    <button
+                      type="button"
+                      onClick={() => onDelete()}
+                      disabled={isSubmitting}
+                      className="px-3 py-1.5 rounded-sm bg-urgent text-white text-sm font-medium transition hover:opacity-90 disabled:opacity-60"
+                    >
+                      Yes
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowDeleteConfirm(false)}
+                      disabled={isSubmitting}
+                      className="px-3 py-1.5 rounded-sm border border-divider text-text-primary text-sm font-medium transition hover:bg-base disabled:opacity-60"
+                    >
+                      No
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowDeleteConfirm(true)}
+                    disabled={isSubmitting}
+                    className="px-4 py-3 rounded-sm border border-urgent text-urgent font-medium transition hover:bg-urgent/10 disabled:opacity-60"
+                  >
+                    Delete
+                  </button>
+                )}
+              </div>
+            )}
 
-            <button
-              type="button"
-              onClick={submit}
-              disabled={isSubmitting || !title.trim()}
-              className="px-6 py-3 rounded-sm bg-sage text-white font-medium flex items-center gap-2 transition-all hover:bg-sage-hover hover:-translate-y-px disabled:opacity-60 disabled:hover:translate-y-0"
-            >
-              {isSubmitting ? 'Creating...' : 'Create Task'}
-            </button>
+            <div className="flex gap-4 ml-auto">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={isSubmitting}
+                className="px-6 py-3 rounded-sm border border-divider bg-transparent text-text-primary transition hover:bg-base disabled:opacity-60"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={submit}
+                disabled={isSubmitting || !title.trim()}
+                className="px-6 py-3 rounded-sm bg-sage text-white font-medium flex items-center gap-2 transition-all hover:bg-sage-hover hover:-translate-y-px disabled:opacity-60 disabled:hover:translate-y-0"
+              >
+                {isSubmitting
+                  ? isEditMode ? 'Saving...' : 'Creating...'
+                  : isEditMode ? 'Save Changes' : 'Create Task'}
+              </button>
+            </div>
           </div>
         </div>
       </div>

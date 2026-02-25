@@ -1,5 +1,6 @@
 import { Router, Response } from 'express';
 import crypto from 'crypto';
+import { Prisma, HouseholdInvite } from '@prisma/client';
 import { authenticate } from '../middleware/auth.js';
 import {
   requireHouseholdMember,
@@ -573,17 +574,45 @@ router.post(
   requireAdmin,
   async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
-      // Generate a random 8-character invite code
-      const code = crypto.randomBytes(4).toString('hex').toUpperCase();
+      // Expire all existing active invites for this household (enforce max 1 active)
+      await prisma.householdInvite.updateMany({
+        where: {
+          householdId: req.householdId!,
+          expiresAt: { gt: new Date() },
+        },
+        data: { expiresAt: new Date() },
+      });
+
       const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
-      const invite = await prisma.householdInvite.create({
-        data: {
-          code,
-          expiresAt,
-          householdId: req.householdId!,
-        },
-      });
+      const createInviteWithRetry = async (): Promise<HouseholdInvite> => {
+        const MAX_ATTEMPTS = 5;
+
+        for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+          const code = crypto.randomBytes(4).toString('hex').toUpperCase();
+          try {
+            return await prisma.householdInvite.create({
+              data: {
+                code,
+                expiresAt,
+                householdId: req.householdId!,
+              },
+            });
+          } catch (err) {
+            const isUniqueViolation =
+              err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';
+
+            if (!isUniqueViolation || attempt === MAX_ATTEMPTS) {
+              throw err;
+            }
+            // Collision: retry with a new code
+          }
+        }
+
+        throw new Error('Failed to create invite after retries');
+      };
+
+      const invite = await createInviteWithRetry();
 
       res.status(201).json({
         status: 'success',
@@ -597,6 +626,75 @@ router.post(
       res.status(500).json({
         status: 'error',
         error: { code: 'INTERNAL_ERROR', message: 'Failed to create invite' },
+      });
+    }
+  }
+);
+
+// ============================================
+// GET /api/households/:id/invites/active — Get active invite code (admin only)
+// ============================================
+router.get(
+  '/:id/invites/active',
+  requireHouseholdMember,
+  requireAdmin,
+  async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const invite = await prisma.householdInvite.findFirst({
+        where: {
+          householdId: req.householdId!,
+          expiresAt: { gt: new Date() },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      res.json({
+        status: 'success',
+        data: invite
+          ? { code: invite.code, expiresAt: invite.expiresAt.toISOString() }
+          : null,
+      });
+    } catch (err) {
+      console.error('GET /api/households/:id/invites/active error:', err);
+      res.status(500).json({
+        status: 'error',
+        error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch active invite' },
+      });
+    }
+  }
+);
+
+// ============================================
+// DELETE /api/households/:id/invites/active — Force-expire active invite (admin only)
+// ============================================
+router.delete(
+  '/:id/invites/active',
+  requireHouseholdMember,
+  requireAdmin,
+  async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const result = await prisma.householdInvite.updateMany({
+        where: {
+          householdId: req.householdId!,
+          expiresAt: { gt: new Date() },
+        },
+        data: { expiresAt: new Date() },
+      });
+
+      if (result.count === 0) {
+        res.status(404).json({
+          status: 'error',
+          error: { code: 'NO_ACTIVE_INVITE', message: 'No active invite code to expire' },
+        });
+        return;
+      }
+
+      res.json({ status: 'success', data: null });
+    } catch (err) {
+      console.error('DELETE /api/households/:id/invites/active error:', err);
+      res.status(500).json({
+        status: 'error',
+        error: { code: 'INTERNAL_ERROR', message: 'Failed to expire invite' },
       });
     }
   }
@@ -619,14 +717,6 @@ router.post(
         res.status(404).json({
           status: 'error',
           error: { code: 'INVITE_NOT_FOUND', message: 'Invalid invite code' },
-        });
-        return;
-      }
-
-      if (invite.usedAt) {
-        res.status(410).json({
-          status: 'error',
-          error: { code: 'INVITE_USED', message: 'This invite code has already been used' },
         });
         return;
       }
@@ -660,7 +750,7 @@ router.post(
         return;
       }
 
-      // Join the household and mark invite as used in a transaction
+      // Join the household in a transaction
       const household = await prisma.$transaction(async (tx) => {
         await tx.householdMember.create({
           data: {
@@ -668,11 +758,6 @@ router.post(
             householdId: invite.householdId,
             role: 'MEMBER',
           },
-        });
-
-        await tx.householdInvite.update({
-          where: { id: invite.id },
-          data: { usedAt: new Date() },
         });
 
         return tx.household.findUnique({

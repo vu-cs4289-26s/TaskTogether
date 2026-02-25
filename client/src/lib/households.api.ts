@@ -35,6 +35,15 @@ export async function joinHouseholdApi(code: string): Promise<Household> {
   return res.data.data;
 }
 
+export async function getActiveInviteApi(householdId: string): Promise<{ code: string; expiresAt: string } | null> {
+  const res = await api.get(`/households/${householdId}/invites/active`);
+  return res.data.data;
+}
+
+export async function expireInviteApi(householdId: string): Promise<void> {
+  await api.delete(`/households/${householdId}/invites/active`);
+}
+
 export async function listMembersApi(
   householdId: string
 ): Promise<Array<{ id: string; name: string; email: string; avatar: string | null; role: string; joinedAt: string }>> {
