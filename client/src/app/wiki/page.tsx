@@ -1,7 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import AppNavbar from '@/components/shared/AppNavbar';
+import { listHouseholdsApi } from '@/lib/households.api';
+import type { Household } from '@/types/households';
 
 type SectionId =
     | 'garbage'
@@ -23,44 +27,120 @@ const CONTENTS: { id: SectionId; title: string }[] = [
 ];
 
 export default function WikiPage() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen bg-base">
+                <AppNavbar />
+                <div className="max-w-[1400px] mx-auto px-6 py-12 text-text-secondary">Loading...</div>
+            </div>
+        }>
+            <WikiPageContent />
+        </Suspense>
+    );
+}
+
+function WikiPageContent() {
+    const searchParams = useSearchParams();
+    const householdId = searchParams.get('household');
+
     const [active, setActive] = useState<SectionId>('garbage');
+    const [households, setHouseholds] = useState<Household[]>([]);
+    const [householdsLoading, setHouseholdsLoading] = useState(!householdId);
 
     const sectionIds = useMemo(() => CONTENTS.map((c) => c.id), []);
 
+    // Fetch households for the picker when no household is selected
+    useEffect(() => {
+        if (householdId) return;
+        let cancelled = false;
+        (async () => {
+            try {
+                const data = await listHouseholdsApi();
+                if (!cancelled) setHouseholds(data);
+            } catch {
+                // gracefully handle
+            } finally {
+                if (!cancelled) setHouseholdsLoading(false);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [householdId]);
+
+   // Scroll-spy for wiki sidebar (must be above early return to satisfy hook rules)
    useEffect(() => {
-  function onScroll() {
-    const eyeY = window.innerHeight * 0.35;
+        if (!householdId) return; // no-op when showing picker
+        function onScroll() {
+            const eyeY = window.innerHeight * 0.35;
 
-    const bottomSlack = 8;
-    const scrolledToBottom =
-      window.innerHeight + window.scrollY >= document.body.scrollHeight - bottomSlack;
+            const bottomSlack = 8;
+            const scrolledToBottom =
+                window.innerHeight + window.scrollY >= document.body.scrollHeight - bottomSlack;
 
-    if (scrolledToBottom) {
-      setActive(sectionIds[sectionIds.length - 1] as SectionId);
-      return;
+            if (scrolledToBottom) {
+                setActive(sectionIds[sectionIds.length - 1] as SectionId);
+                return;
+            }
+
+            let best: { id: SectionId; dist: number } | null = null;
+
+            for (const id of sectionIds) {
+                const el = document.getElementById(id);
+                if (!el) continue;
+
+                const top = el.getBoundingClientRect().top;
+                const dist = eyeY - top;
+
+                if (dist >= 0 && (best === null || dist < best.dist)) {
+                    best = { id: id as SectionId, dist };
+                }
+            }
+
+            setActive(best?.id ?? (sectionIds[0] as SectionId));
+        }
+
+        onScroll();
+        window.addEventListener('scroll', onScroll, { passive: true });
+        return () => window.removeEventListener('scroll', onScroll);
+    }, [sectionIds, householdId]);
+
+    // Show "pick a household" when no household is selected
+    if (!householdId) {
+        return (
+            <div className="min-h-screen bg-base">
+                <AppNavbar />
+                <div className="max-w-[600px] mx-auto px-6 py-16">
+                    <div className="bg-surface border border-divider rounded-md p-8 text-center">
+                        <h1 className="text-2xl font-heading font-bold text-text-primary mb-2">
+                            Household Wiki
+                        </h1>
+                        <p className="text-text-secondary mb-6">
+                            Please select a household to view its wiki.
+                        </p>
+
+                        {householdsLoading ? (
+                            <p className="text-sm text-text-secondary">Loading households...</p>
+                        ) : households.length === 0 ? (
+                            <p className="text-sm text-text-secondary">
+                                You are not a member of any households yet.
+                            </p>
+                        ) : (
+                            <div className="flex flex-col gap-2">
+                                {households.map((h) => (
+                                    <Link
+                                        key={h.id}
+                                        href={`/wiki?household=${h.id}`}
+                                        className="block px-4 py-3 rounded-sm border border-divider no-underline text-text-primary font-medium transition-all hover:bg-base hover:border-sage hover:text-sage"
+                                    >
+                                        {h.name}
+                                    </Link>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
     }
-
-    let best: { id: SectionId; dist: number } | null = null;
-
-    for (const id of sectionIds) {
-      const el = document.getElementById(id);
-      if (!el) continue;
-
-      const top = el.getBoundingClientRect().top;
-      const dist = eyeY - top;
-
-      if (dist >= 0 && (best === null || dist < best.dist)) {
-        best = { id: id as SectionId, dist };
-      }
-    }
-
-    setActive(best?.id ?? (sectionIds[0] as SectionId));
-  }
-
-  onScroll();
-  window.addEventListener('scroll', onScroll, { passive: true });
-  return () => window.removeEventListener('scroll', onScroll);
-}, [sectionIds]);
 
     function scrollTo(id: SectionId) {
         document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });

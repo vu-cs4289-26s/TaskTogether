@@ -6,8 +6,9 @@ export const inputClass =
   'w-full rounded-sm border border-divider bg-surface px-4 py-3 text-text-primary placeholder:text-text-secondary/60 focus:outline-none focus:ring-2 focus:ring-sage focus:border-sage transition';
 
 type Props = {
-  label?: ReactNode; // ✅ was string — now supports JSX
+  label?: ReactNode; // was string — now supports JSX
   htmlFor?: string;
+  required?: boolean;
   hint?: ReactNode;
   error?: ReactNode;
   children: ReactNode;
@@ -17,6 +18,7 @@ type Props = {
 export default function Field({
   label,
   htmlFor,
+  required,
   hint,
   error,
   children,
@@ -31,6 +33,7 @@ export default function Field({
         >
           <span className="w-1 h-4 bg-terracotta rounded-sm" />
           <span>{label}</span>
+          {required && <span className="text-urgent">*</span>}
         </label>
       )}
 
