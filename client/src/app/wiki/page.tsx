@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import AppNavbar from '@/components/shared/AppNavbar';
@@ -27,6 +27,19 @@ const CONTENTS: { id: SectionId; title: string }[] = [
 ];
 
 export default function WikiPage() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen bg-base">
+                <AppNavbar />
+                <div className="max-w-[1400px] mx-auto px-6 py-12 text-text-secondary">Loading...</div>
+            </div>
+        }>
+            <WikiPageContent />
+        </Suspense>
+    );
+}
+
+function WikiPageContent() {
     const searchParams = useSearchParams();
     const householdId = searchParams.get('household');
 
