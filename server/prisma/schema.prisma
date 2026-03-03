@@ -27,6 +27,20 @@ enum IssueStatus {
     ARCHIVED
 }
 
+enum IssuePriority {
+  URGENT
+  MEDIUM
+  LOW
+}
+
+enum IssueType {
+  MAINTENANCE
+  HOUSEMATE_CONFLICT
+  NOISE_COMPLAINT
+  CLEANLINESS
+  OTHER
+}
+
 enum ActivityType {
     HOMEWORK
     BONDING
@@ -240,28 +254,31 @@ model TaskCompletion {
 // ============================================
 
 model Issue {
-  id          String      @id @default(uuid())
+  id          String        @id @default(uuid())
   title       String
   description String?
-  photoUrl    String?     // Photo of the issue
-  status      IssueStatus @default(OPEN)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  photoUrl    String?
+  status      IssueStatus   @default(OPEN)
 
-  // Relations
+  type        IssueType     @default(MAINTENANCE)  
+  priority    IssuePriority @default(MEDIUM)
+  isAnonymous Boolean       @default(false)
+
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
   reportedById String
   reportedBy   User        @relation("IssueReporter", fields: [reportedById], references: [id], onDelete: Cascade)
-  
+
   householdId  String
   household    Household   @relation(fields: [householdId], references: [id], onDelete: Cascade)
-  
-  // Comments/resolution
+
   comments IssueComment[]
 
   @@index([householdId])
-  @@index([reportedById])
   @@index([status])
-  @@index([createdAt])
+  @@index([type])
+  @@index([priority])
 }
 
 model IssueComment {
