@@ -8,6 +8,7 @@ import householdRouter from './routes/households.js';
 import tasksRouter from './routes/tasks.js';
 import issuesRouter from './routes/issues.js';
 import activitiesRouter from './routes/activities.js';
+import uploadRouter from './routes/upload.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -23,6 +24,7 @@ app.use('/api/households', householdRouter);
 app.use('/api/households/:id/tasks', tasksRouter);
 app.use('/api/households/:id/issues', issuesRouter);
 app.use('/api/households/:id/activities', activitiesRouter);
+app.use('/api/upload', uploadRouter);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
