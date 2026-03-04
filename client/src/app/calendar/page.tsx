@@ -17,6 +17,8 @@ import type { Task, CreateTaskInput, UpdateTaskInput } from '@/types/tasks';
 import AddTaskModal from '@/components/households/AddTaskModal';
 import ManageMembersModal from '@/components/households/ManageMembersModal';
 import CompleteTaskModal from '@/components/modals/CompleteTaskModal';
+import BaseModal from '@/components/modals/BaseModal';
+import Button from '@/components/ui/Button';
 import { useAuth } from '@/contexts/AuthContext';
 
 // report issue feature
@@ -26,7 +28,12 @@ import IssuesSection from '@/components/issues/IssueSection';
 import CalendarGrid from '@/components/calendar/CalendarGrid';
 import ActivityCard from '@/components/calendar/ActivityCard';
 import CreateEventModal, { type EventDetailInput } from '@/components/modals/CreateEventModal';
-import { listActivitiesApi, createActivityApi } from '@/lib/activities.api';
+import {
+  listActivitiesApi,
+  createActivityApi,
+  updateActivityApi,
+  deleteActivityApi,
+} from '@/lib/activities.api';
 import type { Activity, ActivityType, CreateActivityInput } from '@/types/activities';
 
 const priorityStyles: Record<string, string> = {
@@ -58,13 +65,10 @@ function monthLabel(year: number, month: number) {
   return new Date(year, month, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 }
 
-// ActivityType is limited, so we use BOTH:
-// - activityType (for broad category)
-// - description tag [[TT_TYPE:...]] (for precise dot color + legend matching)
 function mapHouseholdEventTypeToActivityType(t: EventDetailInput['type']): ActivityType {
-  if (t === 'maintenance') return 'CHORE';  // sage
-  if (t === 'social') return 'BONDING';     // terracotta
-  // meeting/shared-space/other -> OTHER (we'll disambiguate via tag)
+  if (t === 'maintenance') return 'CHORE';  
+  if (t === 'social') return 'BONDING';     
+
   return 'OTHER';
 }
 
@@ -77,6 +81,80 @@ function withTypeTag(description: string | undefined, type: string) {
   const tag = `[[TT_TYPE:${type}]]`;
   const base = (description ?? '').trim();
   return base ? `${base} ${tag}` : tag;
+}
+
+// ---- Household calendar tag helpers (kept local to avoid touching shared types) ----
+function extractTag(desc: string | null | undefined, key: string): string | null {
+  if (!desc) return null;
+  const re = new RegExp(`\\[\\[${key}:([^\\]]+)\\]\\]`, 'i');
+  const m = desc.match(re);
+  return m?.[1]?.trim() ?? null;
+}
+
+function stripCalendarTags(desc: string) {
+  // Remove our calendar-only tags but preserve any other text the user wrote.
+  return desc
+    .replace(/\[\[TT_TYPE:[a-z-]+\]\]/gi, '')
+    .replace(/\[\[TT_END:[0-9:]+\]\]/gi, '')
+    .replace(/\[\[TT_LOC:[^\]]+\]\]/gi, '')
+    .replace(/\[\[TT_ALLDAY:1\]\]/gi, '')
+    .trim();
+}
+
+function safeTagValue(v: string) {
+  // Tag values are bracket-delimited; avoid stray closing brackets breaking parsing.
+  return v.replace(/\]/g, '').trim();
+}
+
+function withCalendarTags(baseDescription: string | undefined, input: EventDetailInput) {
+  const parts: string[] = [];
+  const base = (baseDescription ?? '').trim();
+  if (base) parts.push(stripCalendarTags(base));
+
+  parts.push(`[[TT_TYPE:${safeTagValue(String(input.type))}]]`);
+  parts.push(`[[TT_LOC:${safeTagValue(input.location)}]]`);
+
+  if (input.allDay) {
+    parts.push('[[TT_ALLDAY:1]]');
+  } else if (input.endTime) {
+    parts.push(`[[TT_END:${safeTagValue(input.endTime)}]]`);
+  }
+
+  return parts.join(' ').trim();
+}
+
+function padTime2(n: number) {
+  return String(n).padStart(2, '0');
+}
+
+function activityToEventDetailInput(activity: Activity): Partial<EventDetailInput> {
+  const scheduled = new Date(activity.scheduledAt);
+  const isoDate = `${scheduled.getFullYear()}-${pad2(scheduled.getMonth() + 1)}-${pad2(scheduled.getDate())}`;
+  const start = `${padTime2(scheduled.getHours())}:${padTime2(scheduled.getMinutes())}`;
+
+  const taggedType = extractTag(activity.description, 'TT_TYPE')?.toLowerCase() ?? null;
+  const isAllDay = extractTag(activity.description, 'TT_ALLDAY') === '1';
+  const endTime = extractTag(activity.description, 'TT_END') ?? '';
+  const location = extractTag(activity.description, 'TT_LOC') ?? '';
+
+  // Reasonable fallback if we don't have a TT_TYPE tag.
+  const fallbackType: EventDetailInput['type'] =
+    activity.activityType === 'CHORE'
+      ? 'maintenance'
+      : activity.activityType === 'BONDING'
+        ? 'social'
+        : 'other';
+
+  return {
+    name: activity.title,
+    type: (taggedType as EventDetailInput['type']) ?? fallbackType,
+    date: isoDate,
+    startTime: start,
+    endTime,
+    location,
+    description: activity.description ? stripCalendarTags(activity.description) : '',
+    allDay: isAllDay,
+  };
 }
 
 export default function HouseholdDashboardPage() {
@@ -123,6 +201,25 @@ export default function HouseholdDashboardPage() {
   const [isAddEventOpen, setIsAddEventOpen] = useState(false);
   const [isCreatingEvent, setIsCreatingEvent] = useState(false);
   const [createEventError, setCreateEventError] = useState<string | null>(null);
+
+  // Edit/delete event state (household calendar)
+  const [openEventDetails, setOpenEventDetails] = useState(false);
+  const [activeActivity, setActiveActivity] = useState<Activity | null>(null);
+  const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
+  const [isEditEventOpen, setIsEditEventOpen] = useState(false);
+  const [isUpdatingEvent, setIsUpdatingEvent] = useState(false);
+  const [updateEventError, setUpdateEventError] = useState<string | null>(null);
+
+  function openActivity(activityId: string) {
+    const found = activities.find((a) => a.id === activityId) ?? null;
+    setActiveActivity(found);
+    setOpenEventDetails(!!found);
+  }
+
+  function closeActivityDetails() {
+    setOpenEventDetails(false);
+    setActiveActivity(null);
+  }
 
   function goPrevMonth() {
     setSelectedDate(null);
@@ -321,7 +418,8 @@ export default function HouseholdDashboardPage() {
       const scheduledAt = buildScheduledAt(input);
       const activityType = mapHouseholdEventTypeToActivityType(input.type);
 
-      const taggedDescription = withTypeTag(input.description?.trim() || undefined, input.type);
+      // Store tags so we can support edit/delete + consistent dot colors.
+      const taggedDescription = withCalendarTags(input.description?.trim() || undefined, input);
 
       const createInput: CreateActivityInput = {
         title: input.name,
@@ -360,6 +458,85 @@ export default function HouseholdDashboardPage() {
       setCreateEventError('Failed to create event. Please try again.');
     } finally {
       setIsCreatingEvent(false);
+    }
+  }
+
+  async function handleUpdateEvent(input: EventDetailInput) {
+    if (!id || !editingActivity) return;
+
+    try {
+      setIsUpdatingEvent(true);
+      setUpdateEventError(null);
+
+      const scheduledAt = buildScheduledAt(input);
+      const activityType = mapHouseholdEventTypeToActivityType(input.type);
+
+      const updatedDescription = withCalendarTags(input.description?.trim() || undefined, input);
+
+      const updateInput = {
+        title: input.name,
+        description: updatedDescription,
+        activityType,
+        scheduledAt,
+      };
+
+      // Optimistic UI update
+      setActivities((prev) =>
+        prev.map((a) =>
+          a.id === editingActivity.id
+            ? {
+                ...a,
+                title: updateInput.title,
+                description: updateInput.description,
+                activityType: updateInput.activityType,
+                scheduledAt: updateInput.scheduledAt,
+                updatedAt: new Date().toISOString(),
+              }
+            : a
+        )
+      );
+
+      try {
+        const saved = await updateActivityApi(id, editingActivity.id, updateInput);
+        setActivities((prev) => prev.map((a) => (a.id === saved.id ? saved : a)));
+      } catch {
+        // If the backend update fails, we keep the optimistic update for now.
+      }
+
+      setIsEditEventOpen(false);
+      setEditingActivity(null);
+      closeActivityDetails();
+    } catch {
+      setUpdateEventError('Failed to update event. Please try again.');
+    } finally {
+      setIsUpdatingEvent(false);
+    }
+  }
+
+  async function handleDeleteEvent() {
+    if (!id || !editingActivity) return;
+
+    try {
+      setIsUpdatingEvent(true);
+      setUpdateEventError(null);
+
+      // Optimistic remove
+      const deletingId = editingActivity.id;
+      setActivities((prev) => prev.filter((a) => a.id !== deletingId));
+
+      try {
+        await deleteActivityApi(id, deletingId);
+      } catch {
+        // If delete fails, re-fetch activities on next refresh; keep UI consistent for now.
+      }
+
+      setIsEditEventOpen(false);
+      setEditingActivity(null);
+      closeActivityDetails();
+    } catch {
+      setUpdateEventError('Failed to delete event. Please try again.');
+    } finally {
+      setIsUpdatingEvent(false);
     }
   }
 
@@ -586,20 +763,45 @@ export default function HouseholdDashboardPage() {
           <div className="flex justify-between items-center mb-6 pb-4 border-b border-divider">
             <h2 className="text-xl font-semibold text-sage">Shared Calendar</h2>
 
-            <button
-              onClick={() => {
-                setIsAddEventOpen(true);
-                setCreateEventError(null);
-              }}
-              className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium flex items-center gap-2 transition-all hover:bg-base hover:border-sage"
-              type="button"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-              Add Event
-            </button>
+            <div className="flex items-center gap-2">
+              {/*
+                Calendar-only page entry point.
+              */}
+              <button
+                onClick={() => {
+                  if (id) router.push(`/households/${id}/calendar`);
+                }}
+                className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium transition-all hover:bg-base hover:border-sage"
+                type="button"
+                disabled={!id}
+              >
+                Full Calendar
+              </button>
+
+              <button
+                onClick={() => {
+                  setIsAddEventOpen(true);
+                  setCreateEventError(null);
+                }}
+                className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium flex items-center gap-2 transition-all hover:bg-base hover:border-sage"
+                type="button"
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                Add Event
+              </button>
+            </div>
           </div>
 
           <div className="flex justify-between items-center mb-4">
@@ -652,7 +854,12 @@ export default function HouseholdDashboardPage() {
             ) : (
               <div className="mt-3 flex flex-col gap-3">
                 {activitiesForSelectedDay.map((a) => (
-                  <ActivityCard key={a.id} activity={a} currentUserId={user?.id} />
+                  <ActivityCard
+                    key={a.id}
+                    activity={a}
+                    currentUserId={user?.id}
+                    onClick={openActivity}
+                  />
                 ))}
               </div>
             )}
@@ -661,23 +868,23 @@ export default function HouseholdDashboardPage() {
           {/* Legend that matches CalendarGrid tag colors */}
           <div className="mt-5 flex flex-wrap gap-4 text-[13px] text-text-secondary">
             <div className="flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-info" />
+              <div className="w-2.5 h-2.5 rounded-full bg-info" />
               <span>Meeting</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-pending" />
+              <div className="w-2.5 h-2.5 rounded-full bg-pending" />
               <span>Shared Space Booking</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-terracotta" />
+              <div className="w-2.5 h-2.5 rounded-full bg-sage" />
               <span>Social Event</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-sage" />
+              <div className="w-2.5 h-2.5 rounded-full bg-amber-900" />
               <span>Maintenance</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-divider" />
+              <div className="w-2.5 h-2.5 rounded-full bg-divider" />
               <span>Other</span>
             </div>
           </div>
@@ -756,6 +963,93 @@ export default function HouseholdDashboardPage() {
           }
         }}
         onSave={handleCreateEvent}
+      />
+
+      {/* Household Event Details Modal (click an event card) */}
+      <BaseModal
+        open={openEventDetails}
+        ariaLabel="Event details"
+        title={activeActivity?.title ?? 'Event Details'}
+        subtitle={
+          activeActivity
+            ? new Date(activeActivity.scheduledAt).toLocaleString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+              })
+            : undefined
+        }
+        onClose={closeActivityDetails}
+        maxWidthClassName="max-w-[520px]"
+      >
+        <div className="flex flex-col gap-4">
+          <div className="text-sm text-text-secondary whitespace-pre-wrap">
+            {activeActivity?.description ? stripCalendarTags(activeActivity.description) : 'No description.'}
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="danger"
+              onClick={async () => {
+                if (!id || !activeActivity) return;
+                // Keep delete separate from edit to match user expectations.
+                setIsUpdatingEvent(true);
+                setUpdateEventError(null);
+                const deletingId = activeActivity.id;
+                setActivities((prev) => prev.filter((a) => a.id !== deletingId));
+                try {
+                  await deleteActivityApi(id, deletingId);
+                } catch {
+                } finally {
+                  setIsUpdatingEvent(false);
+                  closeActivityDetails();
+                }
+              }}
+              disabled={!activeActivity || isUpdatingEvent}
+            >
+              Delete
+            </Button>
+
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                if (!activeActivity) return;
+                setEditingActivity(activeActivity);
+                setIsEditEventOpen(true);
+              }}
+              disabled={!activeActivity}
+            >
+              Edit
+            </Button>
+
+            <Button type="button" variant="secondary" onClick={closeActivityDetails}>
+              Close
+            </Button>
+          </div>
+        </div>
+      </BaseModal>
+
+      {/* Edit/Delete Event Modal */}
+      <CreateEventModal
+        open={isEditEventOpen}
+        mode="edit"
+        context="household"
+        initialValue={editingActivity ? activityToEventDetailInput(editingActivity) : undefined}
+        isSubmitting={isUpdatingEvent}
+        error={updateEventError}
+        onClose={() => {
+          if (!isUpdatingEvent) {
+            setIsEditEventOpen(false);
+            setUpdateEventError(null);
+            setEditingActivity(null);
+          }
+        }}
+        onSave={handleUpdateEvent}
+        onDelete={handleDeleteEvent}
       />
     </div>
   );
