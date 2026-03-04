@@ -29,7 +29,12 @@ import CreateEventModal, { type EventDetailInput } from '@/components/modals/Cre
 import BaseModal from '@/components/modals/BaseModal';
 import Button from '@/components/ui/Button';
 
-import { listActivitiesApi, createActivityApi } from '@/lib/activities.api';
+import {
+  listActivitiesApi,
+  createActivityApi,
+  updateActivityApi,
+  deleteActivityApi,
+} from '@/lib/activities.api';
 import type { Activity, ActivityType, CreateActivityInput } from '@/types/activities';
 
 const priorityStyles: Record<string, string> = {
@@ -73,31 +78,6 @@ function mapEventTypeToActivityType(t: EventDetailInput['type']): ActivityType {
 function buildScheduledAt(input: EventDetailInput) {
   if (input.allDay) return `${input.date}T00:00:00`;
   return `${input.date}T${input.startTime || '00:00'}:00`;
-}
-
-// Tag helpers
-function withTags(desc: string | undefined, input: EventDetailInput) {
-  const parts: string[] = [];
-  const base = (desc ?? '').trim();
-  if (base) parts.push(base);
-
-  parts.push(`[[TT_TYPE:${input.type}]]`);
-
-  if (input.allDay) {
-    parts.push('[[TT_ALLDAY:1]]');
-  } else {
-    if (input.endTime) parts.push(`[[TT_END:${input.endTime}]]`);
-  }
-
-  return parts.join(' ').trim();
-}
-
-function stripTags(desc: string) {
-  return desc
-    .replace(/\[\[TT_TYPE:[a-z-]+\]\]/gi, '')
-    .replace(/\[\[TT_END:[0-9:]+\]\]/gi, '')
-    .replace(/\[\[TT_ALLDAY:1\]\]/gi, '')
-    .trim();
 }
 
 function extractTag(desc: string | null | undefined, key: string): string | null {
@@ -159,6 +139,70 @@ function formatTimeRange(activity: Activity) {
   return `${datePart}, ${startTime} – ${endTime}`;
 }
 
+function safeTagValue(v: string) {
+  return v.replace(/\]/g, '').trim();
+}
+
+// Tag helpers 
+function withTags(desc: string | undefined, input: EventDetailInput) {
+  const parts: string[] = [];
+  const base = (desc ?? '').trim();
+  if (base) parts.push(stripTags(base)); 
+
+  parts.push(`[[TT_TYPE:${safeTagValue(String(input.type))}]]`);
+
+  // optional location tag 
+  if (input.location?.trim()) {
+    parts.push(`[[TT_LOC:${safeTagValue(input.location)}]]`);
+  }
+
+  if (input.allDay) {
+    parts.push('[[TT_ALLDAY:1]]');
+  } else if (input.endTime) {
+    parts.push(`[[TT_END:${safeTagValue(input.endTime)}]]`);
+  }
+
+  return parts.join(' ').trim();
+}
+
+function stripTags(desc: string) {
+  return desc
+    .replace(/\[\[TT_TYPE:[a-z-]+\]\]/gi, '')
+    .replace(/\[\[TT_END:[0-9:]+\]\]/gi, '')
+    .replace(/\[\[TT_LOC:[^\]]+\]\]/gi, '')
+    .replace(/\[\[TT_ALLDAY:1\]\]/gi, '')
+    .trim();
+}
+
+function activityToEventDetailInput(activity: Activity): Partial<EventDetailInput> {
+  const scheduled = new Date(activity.scheduledAt);
+  const isoDate = `${scheduled.getFullYear()}-${pad2(scheduled.getMonth() + 1)}-${pad2(scheduled.getDate())}`;
+  const start = `${pad2(scheduled.getHours())}:${pad2(scheduled.getMinutes())}`;
+
+  const taggedType = extractTag(activity.description, 'TT_TYPE')?.toLowerCase() ?? null;
+  const isAllDay = extractTag(activity.description, 'TT_ALLDAY') === '1';
+  const endTime = extractTag(activity.description, 'TT_END') ?? '';
+  const location = extractTag(activity.description, 'TT_LOC') ?? '';
+
+  const fallbackType: EventDetailInput['type'] =
+    activity.activityType === 'CHORE'
+      ? 'maintenance'
+      : activity.activityType === 'BONDING'
+        ? 'social'
+        : 'other';
+
+  return {
+    name: activity.title,
+    type: (taggedType as EventDetailInput['type']) ?? fallbackType,
+    date: isoDate,
+    startTime: start,
+    endTime,
+    location,
+    description: activity.description ? stripTags(activity.description) : '',
+    allDay: isAllDay,
+  };
+}
+
 export default function HouseholdDashboardPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
@@ -203,6 +247,11 @@ export default function HouseholdDashboardPage() {
   const [isAddEventOpen, setIsAddEventOpen] = useState(false);
   const [isCreatingEvent, setIsCreatingEvent] = useState(false);
   const [createEventError, setCreateEventError] = useState<string | null>(null);
+
+  const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
+  const [isEditEventOpen, setIsEditEventOpen] = useState(false);
+  const [isUpdatingEvent, setIsUpdatingEvent] = useState(false);
+  const [updateEventError, setUpdateEventError] = useState<string | null>(null);
 
   // Event Details Modal state
   const [openEventDetails, setOpenEventDetails] = useState(false);
@@ -458,6 +507,89 @@ export default function HouseholdDashboardPage() {
     }
   }
 
+  async function handleUpdateEvent(input: EventDetailInput) {
+  if (!id || !editingActivity) return;
+
+  try {
+    setIsUpdatingEvent(true);
+    setUpdateEventError(null);
+
+    const scheduledAt = buildScheduledAt(input);
+    const activityType = mapEventTypeToActivityType(input.type);
+    const taggedDescription = withTags(input.description?.trim() || undefined, input);
+
+    const updateInput = {
+      title: input.name,
+      description: taggedDescription,
+      activityType,
+      scheduledAt,
+    };
+
+    // Optimistic UI update
+    setActivities((prev) =>
+      prev.map((a) =>
+        a.id === editingActivity.id
+          ? {
+              ...a,
+              title: updateInput.title,
+              description: updateInput.description,
+              activityType: updateInput.activityType,
+              scheduledAt: updateInput.scheduledAt,
+              updatedAt: new Date().toISOString(),
+            }
+          : a
+      )
+    );
+
+    // Try backend, but keep optimistic if backend fails
+    try {
+      const saved = await updateActivityApi(id, editingActivity.id, updateInput);
+      setActivities((prev) => prev.map((a) => (a.id === saved.id ? saved : a)));
+    } catch {
+      // keep optimistic
+    }
+
+    setIsEditEventOpen(false);
+    setEditingActivity(null);
+    closeActivity();
+  } catch {
+    setUpdateEventError('Failed to update event. Please try again.');
+  } finally {
+    setIsUpdatingEvent(false);
+  }
+}
+
+// Delete from either the edit modal or details modal
+async function handleDeleteEvent(activityToDelete?: Activity) {
+  if (!id) return;
+
+  const target = activityToDelete ?? editingActivity;
+  if (!target) return;
+
+  try {
+    setIsUpdatingEvent(true);
+    setUpdateEventError(null);
+
+    const deletingId = target.id;
+
+    // Optimistic remove
+    setActivities((prev) => prev.filter((a) => a.id !== deletingId));
+
+    try {
+      await deleteActivityApi(id, deletingId);
+    } catch {
+    }
+
+    setIsEditEventOpen(false);
+    setEditingActivity(null);
+    closeActivity();
+  } catch {
+    setUpdateEventError('Failed to delete event. Please try again.');
+  } finally {
+    setIsUpdatingEvent(false);
+  }
+}
+
   /** --------------------- loading states --------------------- */
   if (isLoading) {
     return (
@@ -707,23 +839,35 @@ export default function HouseholdDashboardPage() {
         {/* Calendar */}
         <div className="bg-surface rounded-md p-6 shadow-sm border border-divider">
           <div className="flex justify-between items-center mb-6 pb-4 border-b border-divider">
-            <h2 className="text-xl font-semibold text-sage">Shared Calendar</h2>
+  <h2 className="text-xl font-semibold text-sage">Shared Calendar</h2>
 
-            <button
-              onClick={() => {
-                setIsAddEventOpen(true);
-                setCreateEventError(null);
-              }}
-              className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium flex items-center gap-2 transition-all hover:bg-base hover:border-sage"
-              type="button"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-              Add Event
-            </button>
-          </div>
+  <div className="flex items-center gap-2">
+    {/* New: go to the calendar-only page for this household */}
+    <button
+      type="button"
+      onClick={() => router.push(`/households/${id}/calendar`)}
+      className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium transition-all hover:bg-base hover:border-sage"
+    >
+      Full Calendar
+    </button>
+
+    {/* Existing: Add Event */}
+    <button
+      onClick={() => {
+        setIsAddEventOpen(true);
+        setCreateEventError(null);
+      }}
+      className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium flex items-center gap-2 transition-all hover:bg-base hover:border-sage"
+      type="button"
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <line x1="12" y1="5" x2="12" y2="19" />
+        <line x1="5" y1="12" x2="19" y2="12" />
+      </svg>
+      Add Event
+    </button>
+  </div>
+</div>
 
           <div className="flex justify-between items-center mb-4">
             <span className="font-semibold text-base text-text-primary">{monthLabel(calYear, calMonth)}</span>
@@ -783,23 +927,23 @@ export default function HouseholdDashboardPage() {
           {/* Legend - matches subtype colors used in CalendarGrid */}
           <div className="mt-5 flex flex-wrap gap-4 text-[13px] text-text-secondary">
             <div className="flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-info" />
+              <div className="w-2.5 h-2.5 rounded-full bg-info" />
               <span>Meeting</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-terracotta" />
+              <div className="w-2.5 h-2.5 rounded-full bg-terracotta" />
               <span>Shared Space Booking</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-sage" />
+              <div className="w-2.5 h-2.5 rounded-full bg-sage" />
               <span>Social Event</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-red-500" />
+              <div className="w-2.5 h-2.5 rounded-full bg-amber-900" />
               <span>Maintenance</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-pending" />
+              <div className="w-2.5 h-2.5 rounded-full bg-pending" />
               <span>Other</span>
             </div>
           </div>
@@ -880,8 +1024,25 @@ export default function HouseholdDashboardPage() {
         onSave={handleCreateEvent}
       />
 
+      <CreateEventModal
+  open={isEditEventOpen}
+  mode="edit"
+  context="household"
+  initialValue={editingActivity ? activityToEventDetailInput(editingActivity) : undefined}
+  isSubmitting={isUpdatingEvent}
+  error={updateEventError}
+  onClose={() => {
+    if (!isUpdatingEvent) {
+      setIsEditEventOpen(false);
+      setUpdateEventError(null);
+      setEditingActivity(null);
+    }
+  }}
+  onSave={handleUpdateEvent}
+  onDelete={handleDeleteEvent}
+/>
       {/* Event Details Modal */}
-      <BaseModal
+  <BaseModal
   open={openEventDetails}
   ariaLabel="Event details"
   title={activeActivity?.title ?? 'Event Details'}
@@ -898,7 +1059,38 @@ export default function HouseholdDashboardPage() {
       {activeActivity?.description ? stripTags(activeActivity.description) : 'No description.'}
     </div>
 
-    <div className="flex justify-end">
+    <div className="flex justify-end gap-2">
+      <Button
+        type="button"
+        variant="danger"
+        disabled={!activeActivity || isUpdatingEvent}
+        onClick={async () => {
+          if (!activeActivity) return;
+          // Reuse the same delete flow as the edit modal
+          setEditingActivity(activeActivity);
+          await handleDeleteEvent(activeActivity);
+        }}
+      >
+        Delete
+      </Button>
+
+      <Button
+  type="button"
+  variant="secondary"
+  disabled={!activeActivity}
+  onClick={() => {
+    if (!activeActivity) return;
+
+    setEditingActivity(activeActivity);
+    setIsEditEventOpen(true);
+
+    // close the details modal so only the edit modal shows
+    closeActivity();
+  }}
+>
+  Edit
+</Button>
+
       <Button type="button" variant="secondary" onClick={closeActivity}>
         Close
       </Button>
