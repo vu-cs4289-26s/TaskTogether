@@ -1,10 +1,12 @@
 'use client';
 
+// Calendar-only page for Profile events.
+// Duplicates the profile calendar logic with minimal refactors.
+
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AppNavbar from '@/components/shared/AppNavbar';
 import { useAuth } from '@/contexts/AuthContext';
-import { Pencil, Plus } from 'lucide-react';
 
 import CalendarGrid from '@/components/calendar/CalendarGrid';
 import ActivityCard from '@/components/calendar/ActivityCard';
@@ -13,6 +15,7 @@ import type { Activity, CreateActivityInput } from '@/types/activities';
 
 import BaseModal from '@/components/modals/BaseModal';
 import Button from '@/components/ui/Button';
+import { Plus } from 'lucide-react';
 
 function pad2(n: number) {
   return String(n).padStart(2, '0');
@@ -28,7 +31,6 @@ function buildScheduledAt(input: EventDetailInput) {
   return `${input.date}T${input.startTime || '00:00'}:00`;
 }
 
-// ---- tag helpers (same idea as household) ----
 function extractTag(desc: string | null | undefined, key: string): string | null {
   if (!desc) return null;
   const re = new RegExp(`\\[\\[${key}:([^\\]]+)\\]\\]`, 'i');
@@ -36,25 +38,17 @@ function extractTag(desc: string | null | undefined, key: string): string | null
   return m?.[1]?.trim() ?? null;
 }
 
-function safeTagValue(v: string) {
-  return v.replace(/\]/g, '').trim();
-}
-
 function withTags(desc: string | undefined, input: EventDetailInput) {
   const parts: string[] = [];
   const base = (desc ?? '').trim();
-  if (base) parts.push(stripTags(base)); 
+  if (base) parts.push(base);
 
-  parts.push(`[[TT_TYPE:${safeTagValue(String(input.type))}]]`);
-
-  if (input.location?.trim()) {
-    parts.push(`[[TT_LOC:${safeTagValue(input.location)}]]`);
-  }
+  parts.push(`[[TT_TYPE:${input.type}]]`);
 
   if (input.allDay) {
     parts.push('[[TT_ALLDAY:1]]');
-  } else if (input.endTime) {
-    parts.push(`[[TT_END:${safeTagValue(input.endTime)}]]`);
+  } else {
+    if (input.endTime) parts.push(`[[TT_END:${input.endTime}]]`);
   }
 
   return parts.join(' ').trim();
@@ -64,14 +58,12 @@ function stripTags(desc: string) {
   return desc
     .replace(/\[\[TT_TYPE:[a-z-]+\]\]/gi, '')
     .replace(/\[\[TT_END:[0-9:]+\]\]/gi, '')
-    .replace(/\[\[TT_LOC:[^\]]+\]\]/gi, '')   // NEW
     .replace(/\[\[TT_ALLDAY:1\]\]/gi, '')
     .trim();
 }
 
 function prettySubtypeTitle(subtype: string | null): string {
   const s = (subtype ?? '').toLowerCase();
-  // profile modal types should be: personal | household
   switch (s) {
     case 'personal':
       return 'Personal Event';
@@ -84,9 +76,8 @@ function prettySubtypeTitle(subtype: string | null): string {
 
 function formatTimeRange(activity: Activity) {
   const start = new Date(activity.scheduledAt);
-
   const isAllDay = extractTag(activity.description, 'TT_ALLDAY') === '1';
-  const endStr = extractTag(activity.description, 'TT_END'); // "HH:MM"
+  const endStr = extractTag(activity.description, 'TT_END');
 
   const datePart = start.toLocaleDateString('en-US', {
     month: 'short',
@@ -96,60 +87,43 @@ function formatTimeRange(activity: Activity) {
 
   if (isAllDay) return `${datePart} • All day`;
 
-  const startTime = start.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-
+  const startTime = start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   if (!endStr) return `${datePart}, ${startTime}`;
 
   const [hh, mm] = endStr.split(':').map((x) => parseInt(x, 10));
   const end = new Date(start);
   end.setHours(hh || 0, mm || 0, 0, 0);
-
-  const endTime = end.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-  });
+  const endTime = end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 
   return `${datePart}, ${startTime} – ${endTime}`;
 }
 
-export default function ProfilePage() {
+export default function ProfileCalendarPage() {
   const router = useRouter();
   const { user, loading } = useAuth();
   const error = !loading && !user ? 'Not logged in' : null;
 
-  const initials =
-    user?.name
-      ?.split(' ')
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((s) => s[0]!.toUpperCase())
-      .join('') ?? '??';
-
-  // calendar state
   const [calYear, setCalYear] = useState(() => new Date().getFullYear());
   const [calMonth, setCalMonth] = useState(() => new Date().getMonth());
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
 
-  // local profile events (no backend)
+  // Local profile events (no backend)
   const [activities, setActivities] = useState<Activity[]>([]);
 
-  // modal state (create)
+  // Create modal
   const [isAddEventOpen, setIsAddEventOpen] = useState(false);
   const [isCreatingEvent, setIsCreatingEvent] = useState(false);
   const [createEventError, setCreateEventError] = useState<string | null>(null);
 
-  // modal state (edit/delete)
+  // Details modal
+  const [openEventDetails, setOpenEventDetails] = useState(false);
+  const [activeActivity, setActiveActivity] = useState<Activity | null>(null);
+
+  // Edit modal
   const [isEditEventOpen, setIsEditEventOpen] = useState(false);
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
   const [isUpdatingEvent, setIsUpdatingEvent] = useState(false);
   const [updateEventError, setUpdateEventError] = useState<string | null>(null);
-
-  // Event details modal state
-  const [openEventDetails, setOpenEventDetails] = useState(false);
-  const [activeActivity, setActiveActivity] = useState<Activity | null>(null);
 
   function openActivity(activityId: string) {
     const found = activities.find((a) => a.id === activityId) ?? null;
@@ -160,28 +134,6 @@ export default function ProfilePage() {
   function closeActivity() {
     setOpenEventDetails(false);
     setActiveActivity(null);
-  }
-
-  function activityToEventDetailInput(activity: Activity): Partial<EventDetailInput> {
-    const scheduled = new Date(activity.scheduledAt);
-    const isoDate = `${scheduled.getFullYear()}-${pad2(scheduled.getMonth() + 1)}-${pad2(scheduled.getDate())}`;
-    const start = `${pad2(scheduled.getHours())}:${pad2(scheduled.getMinutes())}`;
-
-    const subtype = extractTag(activity.description, 'TT_TYPE')?.toLowerCase() ?? 'personal';
-    const isAllDay = extractTag(activity.description, 'TT_ALLDAY') === '1';
-    const endTime = extractTag(activity.description, 'TT_END') ?? '';
-    const location = extractTag(activity.description, 'TT_LOC') ?? '';
-
-    return {
-      name: activity.title,
-      type: subtype as EventDetailInput['type'],
-      date: isoDate,
-      startTime: start,
-      endTime,
-      location,
-      description: activity.description ? stripTags(activity.description) : '',
-      allDay: isAllDay,
-    };
   }
 
   function goPrevMonth() {
@@ -220,14 +172,12 @@ export default function ProfilePage() {
       setCreateEventError(null);
 
       const scheduledAt = buildScheduledAt(input);
-
-      // store type + end time tags for dots + modal time range
       const taggedDescription = withTags(input.description?.trim() || undefined, input);
 
       const createInput: CreateActivityInput = {
         title: input.name,
         description: taggedDescription,
-        activityType: 'OTHER', // CalendarGrid uses TT_TYPE for color
+        activityType: 'OTHER',
         scheduledAt,
       };
 
@@ -256,16 +206,33 @@ export default function ProfilePage() {
     }
   }
 
+  function activityToEventDetailInput(activity: Activity): Partial<EventDetailInput> {
+    const scheduled = new Date(activity.scheduledAt);
+    const isoDate = `${scheduled.getFullYear()}-${pad2(scheduled.getMonth() + 1)}-${pad2(scheduled.getDate())}`;
+    const start = `${pad2(scheduled.getHours())}:${pad2(scheduled.getMinutes())}`;
+    const subtype = extractTag(activity.description, 'TT_TYPE')?.toLowerCase() ?? 'personal';
+    const isAllDay = extractTag(activity.description, 'TT_ALLDAY') === '1';
+    const endTime = extractTag(activity.description, 'TT_END') ?? '';
+
+    return {
+      name: activity.title,
+      type: subtype as EventDetailInput['type'],
+      date: isoDate,
+      startTime: start,
+      endTime,
+      location: '',
+      description: activity.description ? stripTags(activity.description) : '',
+      allDay: isAllDay,
+    };
+  }
+
   async function handleUpdateEvent(input: EventDetailInput) {
     if (!editingActivity) return;
-
     try {
       setIsUpdatingEvent(true);
       setUpdateEventError(null);
-
       const scheduledAt = buildScheduledAt(input);
       const taggedDescription = withTags(input.description?.trim() || undefined, input);
-
       setActivities((prev) =>
         prev.map((a) =>
           a.id === editingActivity.id
@@ -279,7 +246,6 @@ export default function ProfilePage() {
             : a
         )
       );
-
       setIsEditEventOpen(false);
       setEditingActivity(null);
       closeActivity();
@@ -311,97 +277,33 @@ export default function ProfilePage() {
     <div className="min-h-screen bg-base">
       <AppNavbar />
 
-      <div className="bg-surface border-b border-divider px-6 py-8">
-        <div className="max-w-[1400px] mx-auto flex items-center gap-6">
-          <div className="w-24 h-24 rounded-full bg-sage text-white flex items-center justify-center text-4xl font-bold border-4 border-divider flex-shrink-0">
-            {loading ? '…' : initials}
-          </div>
-
-          <div className="flex-1">
-            <h1 className="text-[32px] font-heading font-bold mb-1">
-              {loading ? 'Loading…' : user?.name ?? 'Unknown User'}
-            </h1>
-
-            <p className="text-text-secondary text-sm mb-3">{loading ? '' : user?.email ?? ''}</p>
-
-            {error && (
-              <div className="mt-2 inline-block px-3 py-2 bg-urgent/10 border border-urgent/30 rounded-sm text-urgent text-sm">
-                {error}
-              </div>
-            )}
-
-            <div className="flex gap-6 mt-3">
-              <div className="flex flex-col">
-                <span className="text-2xl font-bold text-sage">0</span>
-                <span className="text-[13px] text-text-secondary uppercase tracking-wide">Active Tasks</span>
-              </div>
-              <div className="flex flex-col">
-                <span className="text-2xl font-bold text-sage">0</span>
-                <span className="text-[13px] text-text-secondary uppercase tracking-wide">Households</span>
-              </div>
-              <div className="flex flex-col">
-                <span className="text-2xl font-bold text-sage">0</span>
-                <span className="text-[13px] text-text-secondary uppercase tracking-wide">Completed</span>
-              </div>
-            </div>
-          </div>
-
+      <div className="max-w-[1100px] mx-auto px-6 py-8">
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-semibold text-text-primary">My Calendar</h1>
           <button
-            className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium flex items-center gap-2 transition-all hover:bg-base hover:border-sage disabled:opacity-60"
-            disabled={loading || !!error}
+            className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium transition-all hover:bg-base hover:border-sage"
             type="button"
+            onClick={() => router.push('/profile')}
           >
-            <Pencil className="w-4 h-4" />
-            Edit Profile
+            Back to Profile
           </button>
         </div>
-      </div>
 
-      <div className="max-w-[1400px] mx-auto p-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-surface rounded-md p-6 shadow-sm border border-divider">
           <div className="flex justify-between items-center mb-6 pb-4 border-b border-divider">
-            <h2 className="text-xl font-semibold text-sage">My Tasks</h2>
+            <h2 className="text-xl font-semibold text-sage">Calendar</h2>
             <button
-              className="px-5 py-2.5 rounded-sm bg-sage text-white font-medium flex items-center gap-2 transition-all hover:bg-sage-hover hover:-translate-y-px"
+              className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium flex items-center gap-2 transition-all hover:bg-base hover:border-sage"
               type="button"
+              onClick={() => {
+                setIsAddEventOpen(true);
+                setCreateEventError(null);
+              }}
+              disabled={loading || !!error}
             >
               <Plus className="w-4 h-4" />
-              Add Task
+              Add Event
             </button>
-          </div>
-
-          <div className="text-text-secondary text-sm">
-            No chores yet. Create your first household to start adding chores.
-          </div>
-        </div>
-
-        <div className="bg-surface rounded-md p-6 shadow-sm border border-divider">
-          <div className="flex justify-between items-center mb-6 pb-4 border-b border-divider">
-            <h2 className="text-xl font-semibold text-sage">My Calendar</h2>
-            <div className="flex items-center gap-2">
-              {/* Calendar-only page entry point */}
-              <button
-                className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium transition-all hover:bg-base hover:border-sage"
-                type="button"
-                onClick={() => router.push('/profile/calendar')}
-                disabled={loading || !!error}
-              >
-                Full Calendar
-              </button>
-
-              <button
-                className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium flex items-center gap-2 transition-all hover:bg-base hover:border-sage"
-                type="button"
-                onClick={() => {
-                  setIsAddEventOpen(true);
-                  setCreateEventError(null);
-                }}
-                disabled={loading || !!error}
-              >
-                <Plus className="w-4 h-4" />
-                Add Event
-              </button>
-            </div>
           </div>
 
           <div className="flex justify-between items-center mb-4">
@@ -456,16 +358,17 @@ export default function ProfilePage() {
             )}
           </div>
 
-          <div className="mt-4 flex gap-4 text-[13px] text-text-secondary">
-            <div className="flex items-center gap-1.5">
-              <div className="w-2.5 h-2.5 rounded-full bg-pending" />
-              <span>Personal Events</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="w-2.5 h-2.5 rounded-full bg-terracotta" />
-              <span>Household Events</span>
-            </div>
-          </div>
+          {/* Legend - matches subtype colors used in CalendarGrid */}
+<div className="mt-5 flex flex-wrap gap-4 text-[13px] text-text-secondary">
+  <div className="flex items-center gap-1.5">
+    <div className="w-3.5 h-3.5 rounded-full bg-pending" />
+    <span>Personal Event</span>
+  </div>
+  <div className="flex items-center gap-1.5">
+    <div className="w-3.5 h-3.5 rounded-full bg-terracotta" />
+    <span>Household Event</span>
+  </div>
+</div>
         </div>
       </div>
 
@@ -502,7 +405,6 @@ export default function ProfilePage() {
         onDelete={handleDeleteEvent}
       />
 
-      {/* Profile Event Details Modal (THIS was missing before) */}
       <BaseModal
         open={openEventDetails}
         ariaLabel="Event details"
@@ -534,23 +436,18 @@ export default function ProfilePage() {
             >
               Delete
             </Button>
-
             <Button
-  type="button"
-  variant="secondary"
-  onClick={() => {
-    if (!activeActivity) return;
-    setEditingActivity(activeActivity);
-    setIsEditEventOpen(true);
-
-    // close details modal so only the edit modal shows
-    closeActivity();
-  }}
-  disabled={!activeActivity}
->
-  Edit
-</Button>
-
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                if (!activeActivity) return;
+                setEditingActivity(activeActivity);
+                setIsEditEventOpen(true);
+              }}
+              disabled={!activeActivity}
+            >
+              Edit
+            </Button>
             <Button type="button" variant="secondary" onClick={closeActivity}>
               Close
             </Button>

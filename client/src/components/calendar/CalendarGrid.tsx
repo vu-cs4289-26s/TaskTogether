@@ -36,14 +36,6 @@ function extractTag(desc: string | null | undefined, key: string): string | null
   return m?.[1]?.trim() ?? null;
 }
 
-/**
- * We support two "type systems":
- * 1) Household event subtype stored in [[TT_TYPE:meeting|shared-space|social|maintenance|other]]
- * 2) Profile event subtype stored in [[TT_TYPE:personal|household]]
- *
- * If TT_TYPE exists, we use it for dot colors.
- * Otherwise we fall back to ActivityType (CHORE/BONDING/HOMEWORK/OTHER).
- */
 type DotKey =
   | 'meeting'
   | 'shared-space'
@@ -56,15 +48,15 @@ type DotKey =
 
 const dotColorByKey: Record<string, string> = {
   // ----- Household subtypes -----
-  meeting: 'bg-text-secondary',          // gray
-  'shared-space': 'bg-terracotta',       // terracotta/red
-  social: 'bg-sage',                     // green (sage)
-  maintenance: 'bg-red-500',            // BLUE (different from social)
-  other: 'bg-pending',                   // orange/yellow
+  meeting: 'bg-text-secondary',        
+  'shared-space': 'bg-terracotta',    
+  social: 'bg-sage',              
+  maintenance: 'bg-amber-900',         
+  other: 'bg-pending',       
 
   // ----- Profile subtypes -----
-  personal: 'bg-sage',                   // green
-  household: 'bg-terracotta',            // terracotta
+  personal: 'bg-pending',                
+  household: 'bg-terracotta',            
 };
 
 function normalizeTypeKey(raw: string | null): string | null {
@@ -134,7 +126,7 @@ export default function CalendarGrid({ year, month, activities, onDayClick, sele
           const base = 'aspect-square border rounded p-1 text-sm cursor-pointer transition-all';
           const outside = 'border-divider text-text-secondary opacity-40 bg-surface';
           const normal = 'border-divider bg-surface hover:border-sage hover:bg-soft-highlight';
-          const todayStyle = 'bg-sage text-white font-semibold border-sage';
+          const todayStyle = 'bg-sage/30 text-text-primary font-semibold border-sage/50';
 
           const selectedRing = isSelected ? 'ring-2 ring-sage ring-offset-2 ring-offset-surface' : '';
           const cls = `${base} ${c.isToday ? todayStyle : c.inMonth ? normal : outside} ${selectedRing}`;
@@ -146,7 +138,7 @@ export default function CalendarGrid({ year, month, activities, onDayClick, sele
               {uniqueKeys.length > 0 && (
                 <div className="flex gap-0.5 mt-1 flex-wrap">
                   {uniqueKeys.map((k) => (
-                    <div key={k} className={`w-1.5 h-1.5 rounded-full ${dotColorByKey[k] ?? 'bg-pending'}`} />
+                    <div key={k} className={`w-2.5 h-2.5 rounded-full ${dotColorByKey[k] ?? 'bg-pending'}`} />
                   ))}
                 </div>
               )}
