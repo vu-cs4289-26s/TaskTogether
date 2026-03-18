@@ -9,6 +9,7 @@ import tasksRouter from './routes/tasks.js';
 import issuesRouter from './routes/issues.js';
 import activitiesRouter from './routes/activities.js';
 import uploadRouter from './routes/upload.js';
+import wikiRouter from './routes/wiki.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -24,6 +25,7 @@ app.use('/api/households', householdRouter);
 app.use('/api/households/:id/tasks', tasksRouter);
 app.use('/api/households/:id/issues', issuesRouter);
 app.use('/api/households/:id/activities', activitiesRouter);
+app.use('/api/households/:id/wiki', wikiRouter);
 app.use('/api/upload', uploadRouter);
 
 // Health check endpoint
