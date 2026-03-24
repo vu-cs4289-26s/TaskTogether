@@ -68,12 +68,6 @@ export default function IssueDetailPanel({
     );
   }, [issue.comments]);
 
-console.log('IssueDetailPanel props', {
-  isAdmin,
-  canEdit,
-  issueId: issue.id,
-  reportedById: issue.reportedById,
-});
 
   return (
     <div className="flex flex-col gap-4">
