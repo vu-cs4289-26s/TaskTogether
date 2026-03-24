@@ -950,7 +950,11 @@ async function handleDeleteEvent(activityToDelete?: Activity) {
         </div>
 
         {/* Issues Section */}
-        <IssuesSection householdId={id || ''} isAdmin={isAdmin} />
+        <IssuesSection
+            householdId={id || ''}
+            isAdmin={isAdmin}
+            currentUserId={user?.id}
+        />     
       </div>
 
       {/* Modals */}

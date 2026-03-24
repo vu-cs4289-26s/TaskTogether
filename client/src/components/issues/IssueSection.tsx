@@ -18,6 +18,7 @@ import type { Issue, IssueType, IssueStatus, IssuePriority, UpdateIssueInput } f
 type Props = {
     householdId: string;
     isAdmin: boolean;
+    currentUserId?: string;
     initialIssues?: Issue[];
 };
 
@@ -165,7 +166,7 @@ function IssueModalHeader({ issue }: { issue: Issue }) {
     );
 }
 
-export default function IssuesSection({ householdId, isAdmin, initialIssues = [] }: Props) {
+export default function IssuesSection({ householdId, isAdmin, currentUserId, initialIssues = [] }: Props) {
     const [issues, setIssues] = useState<Issue[]>(initialIssues);
 
     // Create modal
@@ -183,8 +184,13 @@ export default function IssuesSection({ householdId, isAdmin, initialIssues = []
     const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
     const [isDetailOpen, setIsDetailOpen] = useState(false);
 
-    // For now: ONLY admins can edit
-    const canEdit = isAdmin;
+    function canEditIssue(issue: Issue | null) {
+        if (!issue) return false;
+
+        const allowed = isAdmin || issue.reportedById === currentUserId;
+
+        return allowed;
+    }
 
     useEffect(() => {
         let cancelled = false;
@@ -216,13 +222,12 @@ export default function IssuesSection({ householdId, isAdmin, initialIssues = []
     }
 
     function handleEditClick(issue: Issue) {
-        // close the view modal
-        setIsDetailOpen(false);
+        const allowed = canEditIssue(issue);
+        if (!allowed) return;
 
-        // open the edit modal
         setEditTarget(issue);
         setIsEditOpen(true);
-
+        setIsDetailOpen(false);
         setSubmitError(null);
     }
 
@@ -244,7 +249,7 @@ export default function IssuesSection({ householdId, isAdmin, initialIssues = []
                 title: values.title,
                 type: values.type,
                 priority: values.priority,
-                description: values.description, 
+                description: values.description,
                 anonymous: values.anonymous,
                 photoUrl: null, // until wire photos
             });
@@ -281,7 +286,7 @@ export default function IssuesSection({ householdId, isAdmin, initialIssues = []
             setIsSubmitting(false);
         }
     }
-
+    
     return (
         <div className="lg:col-span-2 bg-surface rounded-md p-6 shadow-sm border border-divider">
             {/* Header */}
@@ -331,8 +336,10 @@ export default function IssuesSection({ householdId, isAdmin, initialIssues = []
                         >
                             <div className="flex justify-between items-start mb-1">
                                 <span className="font-semibold">{issue.title}</span>
-                                <span className="px-2 py-1 rounded text-[11px] font-semibold uppercase border bg-urgent/10 text-urgent border-urgent">
-                                    {issue.status}
+                                <span
+                                    className={`px-2 py-1 rounded text-[11px] font-semibold uppercase border ${statusBadgeClasses(issue.status)}`}
+                                >
+                                    {issue.status.replace(/_/g, ' ')}
                                 </span>
                             </div>
 
@@ -352,34 +359,38 @@ export default function IssuesSection({ householdId, isAdmin, initialIssues = []
                 )}
             </div>
 
-            {/* Create Issue Modal */}
-            <ReportIssueModal
-                open={isReportOpen}
-                isSubmitting={isSubmitting}
-                error={submitError}
-                onClose={() => {
-                    if (isSubmitting) return;
-                    setIsReportOpen(false);
-                    setSubmitError(null);
-                }}
-                onSubmit={handleCreate}
-            />
+            {isReportOpen && (
+                <ReportIssueModal
+                    key="create-issue"
+                    open={true}
+                    isSubmitting={isSubmitting}
+                    error={submitError}
+                    onClose={() => {
+                        if (isSubmitting) return;
+                        setIsReportOpen(false);
+                        setSubmitError(null);
+                    }}
+                    onSubmit={handleCreate}
+                />
+            )}
 
-            {/* Edit Issue Modal (admin only for now) */}
-            <ReportIssueModal
-                open={isEditOpen}
-                mode="edit"
-                initialValue={editTarget ? issueToForm(editTarget) : undefined}
-                isSubmitting={isSubmitting}
-                error={submitError}
-                onClose={() => {
-                    if (isSubmitting) return;
-                    setIsEditOpen(false);
-                    setEditTarget(null);
-                    setSubmitError(null);
-                }}
-                onSubmit={handleEditSubmit}
-            />
+            {isEditOpen && editTarget && (
+                <ReportIssueModal
+                    key={`edit-${editTarget.id}`}
+                    open={true}
+                    mode="edit"
+                    initialValue={issueToForm(editTarget)}
+                    isSubmitting={isSubmitting}
+                    error={submitError}
+                    onClose={() => {
+                        if (isSubmitting) return;
+                        setIsEditOpen(false);
+                        setEditTarget(null);
+                        setSubmitError(null);
+                    }}
+                    onSubmit={handleEditSubmit}
+                />
+            )}
 
             {/* Detail Modal */}
             <BaseModal
@@ -401,7 +412,7 @@ export default function IssuesSection({ householdId, isAdmin, initialIssues = []
                     <IssueDetailPanel
                         issue={selectedIssue}
                         isAdmin={isAdmin}
-                        canEdit={isAdmin}
+                        canEdit={canEditIssue(selectedIssue)}
                         onEdit={handleEditClick}
                         onDelete={handleDelete}
                         onStatusChange={handleStatusChange}

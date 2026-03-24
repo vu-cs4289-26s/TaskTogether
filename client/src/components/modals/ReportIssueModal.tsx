@@ -80,18 +80,26 @@ export default function ReportIssueModal({
     useEffect(() => {
         if (!open) return;
 
-        setTitle(defaults.title);
-        setType(defaults.type);
-        setPriority(defaults.priority);
-        setDescription(defaults.description);
-        setAnonymous(defaults.anonymous);
-        setLocalError(null);
+        if (mode === 'edit' && initialValue) {
+            setTitle(initialValue.title ?? '');
+            setType(initialValue.type ?? 'maintenance');
+            setPriority(initialValue.priority ?? 'medium');
+            setDescription(initialValue.description ?? '');
+            setAnonymous(initialValue.anonymous ?? false);
+            setPhotoUrl(initialValue.photoUrl ?? null);
+        } else {
+            setTitle('');
+            setType('maintenance');
+            setPriority('medium');
+            setDescription('');
+            setAnonymous(false);
+            setPhotoUrl(null);
+        }
 
-        // reset uploads on open (match your modal reset behavior)
+        setLocalError(null);
         setPreviews([]);
-        setPhotoUrl(defaults.photoUrl ?? null);
         setIsDragOver(false);
-    }, [open, defaults]);
+    }, [open, mode, initialValue]);
 
     function validateFiles(files: File[]) {
         const ok: File[] = [];
