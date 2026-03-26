@@ -180,17 +180,10 @@ router.put(
         try {
             const { issueId } = req.params;
 
-<<<<<<< HEAD
             const issue = await prisma.issue.findFirst({
                 where: { id: issueId, householdId: req.householdId! },
-                select: { id: true, reportedById: true },
+                select: { id: true, reportedById: true, status: true, title: true },
             });
-=======
-      const issue = await prisma.issue.findFirst({
-        where: { id: issueId, householdId: req.householdId! },
-        select: { id: true, reportedById: true, status: true, title: true },
-      });
->>>>>>> 71d549578d3983fe093785dd89b36039ef703aeb
 
             if (!issue) {
                 res.status(404).json({
@@ -271,6 +264,17 @@ router.put(
                 },
             });
 
+            // Broadcast notification if status changed
+            if (data.status && data.status !== issue.status) {
+                broadcastNotification({
+                    householdId: req.householdId!,
+                    excludeUserIds: [req.userId!],
+                    type: 'ISSUE_STATUS_CHANGED',
+                    message: `Issue "${updated.title}" status changed to ${data.status}`,
+                    payload: { issueId: updated.id, oldStatus: issue.status, newStatus: data.status },
+                }).catch(console.error);
+            }
+
             res.json({ status: 'success', data: updated });
         } catch (err) {
             console.error(err);
@@ -279,48 +283,6 @@ router.put(
                 error: { code: 'SERVER_ERROR', message: 'Failed to update issue' },
             });
         }
-<<<<<<< HEAD
-=======
-        data.status = status;
-      }
-
-      // Validate title if present
-      if ('title' in data && !data.title) {
-        res.status(400).json({
-          status: 'error',
-          error: { code: 'VALIDATION_ERROR', message: 'Title cannot be empty' },
-        });
-        return;
-      }
-
-      const updated = await prisma.issue.update({
-        where: { id: issue.id },
-        data,
-        include: {
-          reportedBy: { select: userSelect },
-          comments: { include: { user: { select: userSelect } } },
-        },
-      });
-
-      // Broadcast notification if status changed
-      if (data.status && data.status !== issue.status) {
-        broadcastNotification({
-          householdId: req.householdId!,
-          excludeUserIds: [req.userId!],
-          type: 'ISSUE_STATUS_CHANGED',
-          message: `Issue "${updated.title}" status changed to ${data.status}`,
-          payload: { issueId: updated.id, oldStatus: issue.status, newStatus: data.status },
-        }).catch(console.error);
-      }
-
-      res.json({ status: 'success', data: updated });
-    } catch (err) {
-      console.error(err);
-      res.status(500).json({
-        status: 'error',
-        error: { code: 'SERVER_ERROR', message: 'Failed to update issue' },
-      });
->>>>>>> 71d549578d3983fe093785dd89b36039ef703aeb
     }
 );
 
