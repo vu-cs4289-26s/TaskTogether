@@ -4,7 +4,7 @@ import { authenticate } from '../middleware/auth.js';
 import { requireHouseholdMember, requireAdmin } from '../middleware/authorization.js';
 import { AuthenticatedRequest } from '../types/index.js';
 import prisma from '../lib/prisma.js';
-import { createNotification } from '../lib/notifications.js';
+import { createNotification, broadcastNotification } from '../lib/notifications.js';
 import { generateNextOccurrence } from '../lib/taskRecurrence.js';
 
 // mergeParams: true lets requireHouseholdMember read :id from the parent route
@@ -289,6 +289,17 @@ router.post(
         }).catch(console.error);
       }
 
+      // Broadcast new task to all household members (exclude creator + assignee who already got notified)
+      const excludeIds = [req.userId!];
+      if (assignedToUserId) excludeIds.push(assignedToUserId);
+      broadcastNotification({
+        householdId: req.householdId!,
+        excludeUserIds: excludeIds,
+        type: 'TASK_ASSIGNED',
+        message: `New task "${title.trim()}" was created`,
+        payload: { taskId: task!.id, taskTitle: task!.title },
+      }).catch(console.error);
+
       res.status(201).json({ status: 'success', data: task });
     } catch (err) {
       console.error('POST /tasks error:', err);
@@ -343,7 +354,11 @@ router.get(
           include: {
             creator: { select: userSelect },
             assignments: { include: { user: { select: userSelect } } },
-            completions: { orderBy: { completedAt: 'desc' }, take: 1 },
+            completions: {
+              include: { user: { select: userSelect } },
+              orderBy: { completedAt: 'desc' },
+              take: 1,
+            },
           },
         }),
         prisma.task.count({ where }),
@@ -763,25 +778,14 @@ router.post(
         return { completion: comp, nextOccurrence: next };
       });
 
-      // Post-transaction: notify admins + task creator about completion
-      const admins = await prisma.householdMember.findMany({
-        where: { householdId: req.householdId!, role: 'ADMIN' },
-        select: { userId: true },
-      });
-
-      const recipientIds = new Set(admins.map((a) => a.userId));
-      recipientIds.add(task.creatorId); // also notify creator
-      recipientIds.delete(req.userId!); // don't notify the completer
-
-      for (const userId of recipientIds) {
-        createNotification({
-          userId,
-          householdId: req.householdId!,
-          type: 'TASK_COMPLETED',
-          message: `Task "${task.title}" has been completed`,
-          payload: { taskId: task.id, completedBy: req.userId },
-        }).catch(console.error);
-      }
+      // Post-transaction: broadcast task completion to the household
+      broadcastNotification({
+        householdId: req.householdId!,
+        excludeUserIds: [req.userId!],
+        type: 'TASK_COMPLETED',
+        message: `Task "${task.title}" has been completed`,
+        payload: { taskId: task.id, completedBy: req.userId },
+      }).catch(console.error);
 
       // Notify the next assignee if a recurring next occurrence was created
       if (nextOccurrence && nextOccurrence.assignedUserId) {

@@ -236,6 +236,9 @@ export default function HouseholdDashboardPage() {
   const [isEditingTask, setIsEditingTask] = useState(false);
   const [editTaskError, setEditTaskError] = useState<string | null>(null);
 
+  // View completed task details modal
+  const [viewingTask, setViewingTask] = useState<Task | null>(null);
+
   /** ---------------- Calendar state ---------------- */
   const [calYear, setCalYear] = useState(() => new Date().getFullYear());
   const [calMonth, setCalMonth] = useState(() => new Date().getMonth()); // 0-indexed
@@ -404,7 +407,7 @@ export default function HouseholdDashboardPage() {
     }
   }
 
-  async function handleCompleteTask(input: { notes?: string }) {
+  async function handleCompleteTask(input: { notes?: string; photoUrl?: string }) {
     if (!id || !completingTask) return;
     try {
       setIsCompleting(true);
@@ -746,13 +749,21 @@ async function handleDeleteEvent(activityToDelete?: Activity) {
                 const assignee = task.assignments[0]?.user;
                 const priority = task.priority || 'medium';
 
+                const completion = task.completions[0];
+
                 return (
                   <div
                     key={task.id}
-                    className="flex items-start gap-4 p-4 rounded-sm border border-divider transition-all hover:border-sage hover:shadow-sm"
+                    className={`flex items-start gap-4 p-4 rounded-sm border border-divider transition-all hover:border-sage hover:shadow-sm ${
+                      done ? 'cursor-pointer' : ''
+                    }`}
+                    onClick={() => {
+                      if (done) setViewingTask(task);
+                    }}
                   >
                     <div
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
                         if (!done) setCompletingTask(task);
                       }}
                       className={`w-6 h-6 rounded flex-shrink-0 mt-0.5 border-2 transition-all flex items-center justify-center ${
@@ -819,12 +830,37 @@ async function handleDeleteEvent(activityToDelete?: Activity) {
                         </div>
 
                         <span>&bull;</span>
-                        <span>{done ? 'Completed' : `Due: ${formatDueDate(task.dueDate)}`}</span>
+                        <span>
+                          {done
+                            ? `Completed ${
+                                completion?.completedAt
+                                  ? new Date(completion.completedAt).toLocaleDateString('en-US', {
+                                      month: 'short',
+                                      day: 'numeric',
+                                    })
+                                  : ''
+                              }`
+                            : `Due: ${formatDueDate(task.dueDate)}`}
+                        </span>
 
                         {task.isRecurring && task.recurrencePattern && (
                           <>
                             <span>&bull;</span>
                             <span className="capitalize">{task.recurrencePattern}</span>
+                          </>
+                        )}
+
+                        {done && completion?.photoUrl && (
+                          <>
+                            <span>&bull;</span>
+                            <span className="flex items-center gap-1 text-sage">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <rect x="3" y="3" width="18" height="18" rx="2" />
+                                <circle cx="8.5" cy="8.5" r="1.5" />
+                                <polyline points="21 15 16 10 5 21" />
+                              </svg>
+                              Photo
+                            </span>
                           </>
                         )}
                       </div>
@@ -1101,6 +1137,114 @@ async function handleDeleteEvent(activityToDelete?: Activity) {
     </div>
   </div>
 </BaseModal>
+
+      {/* Completed Task Details Modal */}
+      <BaseModal
+        open={!!viewingTask}
+        ariaLabel="Completed task details"
+        title={viewingTask?.title ?? 'Task Details'}
+        subtitle={
+          viewingTask
+            ? viewingTask.completions[0]?.completedAt
+              ? `Completed ${new Date(viewingTask.completions[0].completedAt).toLocaleDateString('en-US', {
+                  month: 'long',
+                  day: 'numeric',
+                  year: 'numeric',
+                  hour: 'numeric',
+                  minute: '2-digit',
+                })}`
+              : 'Completed'
+            : undefined
+        }
+        onClose={() => setViewingTask(null)}
+        maxWidthClassName="max-w-[520px]"
+      >
+        {viewingTask && (
+          <div className="flex flex-col gap-4">
+            {viewingTask.description && (
+              <div>
+                <div className="text-xs font-semibold text-text-secondary uppercase tracking-wide mb-1">Description</div>
+                <div className="text-sm text-text-primary whitespace-pre-wrap">{viewingTask.description}</div>
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-3 text-sm">
+              <span className={`px-2 py-0.5 rounded text-[11px] font-semibold uppercase ${priorityStyles[viewingTask.priority || 'medium']}`}>
+                {priorityLabels[viewingTask.priority || 'medium']}
+              </span>
+
+              {viewingTask.dueDate && (
+                <span className="text-text-secondary">Due: {formatDueDate(viewingTask.dueDate)}</span>
+              )}
+
+              {viewingTask.isRecurring && viewingTask.recurrencePattern && (
+                <span className="text-text-secondary capitalize">{viewingTask.recurrencePattern}</span>
+              )}
+            </div>
+
+            {viewingTask.completions.length > 0 && (
+              <div className="border-t border-divider pt-4">
+                <div className="text-xs font-semibold text-text-secondary uppercase tracking-wide mb-2">Completion Details</div>
+
+                {viewingTask.completions.map((c) => (
+                  <div key={c.id} className="flex flex-col gap-3">
+                    <div className="flex items-center gap-2 text-sm text-text-secondary">
+                      <div
+                        className="w-6 h-6 rounded-full text-white text-[10px] flex items-center justify-center"
+                        style={{ backgroundColor: getAvatarColor(c.user?.id ?? c.userId) }}
+                      >
+                        {c.user ? getInitials(c.user.name) : '?'}
+                      </div>
+                      {c.user && (
+                        <span className="font-medium text-text-primary">
+                          {c.user.id === user?.id ? 'You' : c.user.name}
+                        </span>
+                      )}
+                      <span>&bull;</span>
+                      <span>
+                        {new Date(c.completedAt).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                          hour: 'numeric',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                    </div>
+
+                    {c.notes && (
+                      <div>
+                        <div className="text-xs font-medium text-text-secondary mb-1">Notes</div>
+                        <div className="text-sm text-text-primary bg-base rounded-sm p-3 whitespace-pre-wrap">
+                          {c.notes}
+                        </div>
+                      </div>
+                    )}
+
+                    {c.photoUrl && (
+                      <div>
+                        <div className="text-xs font-medium text-text-secondary mb-1">Photo</div>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={c.photoUrl}
+                          alt="Completion photo"
+                          className="rounded-sm border border-divider max-h-[300px] object-contain w-full bg-base"
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex justify-end mt-2">
+              <Button type="button" variant="secondary" onClick={() => setViewingTask(null)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        )}
+      </BaseModal>
     </div>
   );
 }

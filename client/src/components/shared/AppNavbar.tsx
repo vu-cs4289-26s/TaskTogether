@@ -3,11 +3,13 @@
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { ChevronDown, LogOut, Menu, Settings, User, X } from 'lucide-react';
+import { Bell, ChevronDown, LogOut, Menu, Settings, User, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useNotifications } from '@/contexts/NotificationContext';
 import { listHouseholdsApi } from '@/lib/households.api';
 import type { Household } from '@/types/households';
 import { getInitials, getAvatarColor } from '@/types/households'
+import type { Notification } from '@/types/notifications';
 
 interface AppNavbarProps {
   userName?: string;
@@ -16,10 +18,40 @@ interface AppNavbarProps {
 }
 
 
+/** Simple relative time formatter */
+function timeAgo(dateStr: string): string {
+  const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(dateStr).toLocaleDateString();
+}
+
+/** Icon color per notification type */
+function notifIcon(type: Notification['type']): string {
+  switch (type) {
+    case 'TASK_ASSIGNED':
+    case 'TASK_COMPLETED':
+    case 'TASK_UPCOMING':
+      return 'bg-sage';
+    case 'ISSUE_STATUS_CHANGED':
+      return 'bg-urgent';
+    case 'EVENT_UPCOMING':
+      return 'bg-blue-500';
+    default:
+      return 'bg-sage';
+  }
+}
+
 export default function AppNavbar(props: AppNavbarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout } = useAuth();
+  const { notifications, unreadCount, markRead, markAllRead } = useNotifications();
 
   const userName = props.userName ?? user?.name ?? 'Unknown User';
   const userEmail = props.userEmail ?? user?.email ?? '';
@@ -28,15 +60,17 @@ export default function AppNavbar(props: AppNavbarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [householdsDropdownOpen, setHouseholdsDropdownOpen] = useState(false);
+  const [notifDropdownOpen, setNotifDropdownOpen] = useState(false);
+  const [mobileNotifOpen, setMobileNotifOpen] = useState(false);
   const [households, setHouseholds] = useState<Household[]>([]);
 
   const dropdownRef = useRef<HTMLLIElement>(null);
   const householdsDropdownRef = useRef<HTMLLIElement>(null);
+  const notifDropdownRef = useRef<HTMLLIElement>(null);
 
   // Detect current household from URL
   const householdMatch = pathname.match(/^\/households\/([^/]+)/);
   const currentHouseholdId = householdMatch?.[1] ?? null;
-  const isOnHouseholdPage = !!currentHouseholdId;
 
   const avatarColor = getAvatarColor(user?.id);
 
@@ -59,9 +93,11 @@ export default function AppNavbar(props: AppNavbarProps) {
     setMobileMenuOpen(false);
     setDropdownOpen(false);
     setHouseholdsDropdownOpen(false);
+    setNotifDropdownOpen(false);
+    setMobileNotifOpen(false);
   }, [pathname]);
 
-  // Click-outside handler for both dropdowns
+  // Click-outside handler for all dropdowns
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
@@ -69,6 +105,9 @@ export default function AppNavbar(props: AppNavbarProps) {
       }
       if (householdsDropdownRef.current && !householdsDropdownRef.current.contains(e.target as Node)) {
         setHouseholdsDropdownOpen(false);
+      }
+      if (notifDropdownRef.current && !notifDropdownRef.current.contains(e.target as Node)) {
+        setNotifDropdownOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -79,6 +118,41 @@ export default function AppNavbar(props: AppNavbarProps) {
     logout();
     router.push('/');
   }
+
+  function handleNotifClick(n: Notification) {
+    if (!n.isRead) {
+      markRead(n.householdId, n.id);
+    }
+  }
+
+  const recentNotifications = notifications.slice(0, 15);
+
+  const notifList = (
+    <div className="flex flex-col">
+      {recentNotifications.length === 0 ? (
+        <div className="px-4 py-6 text-center text-text-secondary text-sm">
+          No notifications yet
+        </div>
+      ) : (
+        recentNotifications.map((n) => (
+          <button
+            key={n.id}
+            type="button"
+            onClick={() => handleNotifClick(n)}
+            className={`flex items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-base border-b border-divider last:border-b-0 ${
+              !n.isRead ? 'bg-soft-highlight' : ''
+            }`}
+          >
+            <span className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${!n.isRead ? notifIcon(n.type) : 'bg-transparent'}`} />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-text-primary leading-snug break-words">{n.message}</p>
+              <p className="text-xs text-text-secondary mt-0.5">{timeAgo(n.createdAt)}</p>
+            </div>
+          </button>
+        ))
+      )}
+    </div>
+  );
 
   return (
     <nav className="bg-surface shadow-sm sticky top-0 z-50">
@@ -100,7 +174,9 @@ export default function AppNavbar(props: AppNavbarProps) {
                   : 'text-text-primary'
               }`}
             >
-              Households
+              {currentHouseholdId
+                ? households.find((h) => h.id === currentHouseholdId)?.name ?? 'Households'
+                : 'All Households'}
               <ChevronDown
                 className={`w-4 h-4 transition-transform ${householdsDropdownOpen ? 'rotate-180' : ''}`}
               />
@@ -155,6 +231,43 @@ export default function AppNavbar(props: AppNavbarProps) {
             </Link>
           </li>
 
+          {/* Notifications bell */}
+          <li className="relative" ref={notifDropdownRef}>
+            <button
+              type="button"
+              onClick={() => setNotifDropdownOpen((prev) => !prev)}
+              className="relative p-1.5 rounded-md text-text-primary hover:text-sage hover:bg-base transition-colors"
+              aria-label="Notifications"
+            >
+              <Bell className="w-5 h-5" strokeWidth={2} />
+              {unreadCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-urgent text-white text-[11px] font-bold px-1">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              )}
+            </button>
+
+            {notifDropdownOpen && (
+              <div className="absolute right-0 mt-2 w-[360px] max-h-[420px] bg-surface border border-divider rounded-md shadow-md overflow-hidden z-50 flex flex-col">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-divider">
+                  <h3 className="font-semibold text-[15px] text-text-primary">Notifications</h3>
+                  {unreadCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => markAllRead()}
+                      className="text-xs text-sage font-medium hover:underline"
+                    >
+                      Mark all read
+                    </button>
+                  )}
+                </div>
+                <div className="overflow-y-auto flex-1">
+                  {notifList}
+                </div>
+              </div>
+            )}
+          </li>
+
           {/* User avatar dropdown */}
           <li className="relative" ref={dropdownRef}>
             <div
@@ -206,16 +319,50 @@ export default function AppNavbar(props: AppNavbarProps) {
           </li>
         </ul>
 
-        {/* Mobile hamburger button */}
-        <button
-          type="button"
-          className="md:hidden p-2 rounded-sm text-text-primary hover:bg-base transition-colors"
-          onClick={() => setMobileMenuOpen((prev) => !prev)}
-          aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
-        >
-          {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-        </button>
+        {/* Mobile hamburger + bell */}
+        <div className="flex md:hidden items-center gap-2">
+          <button
+            type="button"
+            className="relative p-2 rounded-sm text-text-primary hover:bg-base transition-colors"
+            onClick={() => { setMobileNotifOpen((prev) => !prev); setMobileMenuOpen(false); }}
+            aria-label="Notifications"
+          >
+            <Bell className="w-5 h-5" strokeWidth={2} />
+            {unreadCount > 0 && (
+              <span className="absolute top-1 right-1 min-w-[16px] h-[16px] flex items-center justify-center rounded-full bg-urgent text-white text-[10px] font-bold px-0.5">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            className="p-2 rounded-sm text-text-primary hover:bg-base transition-colors"
+            onClick={() => { setMobileMenuOpen((prev) => !prev); setMobileNotifOpen(false); }}
+            aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
+          >
+            {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          </button>
+        </div>
       </div>
+
+      {/* Mobile notifications panel */}
+      {mobileNotifOpen && (
+        <div className="md:hidden border-t border-divider bg-surface max-h-[60vh] overflow-y-auto">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-divider">
+            <h3 className="font-semibold text-[15px] text-text-primary">Notifications</h3>
+            {unreadCount > 0 && (
+              <button
+                type="button"
+                onClick={() => markAllRead()}
+                className="text-xs text-sage font-medium hover:underline"
+              >
+                Mark all read
+              </button>
+            )}
+          </div>
+          {notifList}
+        </div>
+      )}
 
       {/* Mobile menu panel */}
       {mobileMenuOpen && (

@@ -11,6 +11,11 @@
     "test": "jest"
   },
   "dependencies": {
+    "@tiptap/extension-placeholder": "^3.20.4",
+    "@tiptap/extension-underline": "^3.20.4",
+    "@tiptap/pm": "^3.20.4",
+    "@tiptap/react": "^3.20.4",
+    "@tiptap/starter-kit": "^3.20.4",
     "autoprefixer": "^10.4.17",
     "axios": "^1.6.7",
     "lucide-react": "^0.575.0",

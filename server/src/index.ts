@@ -8,6 +8,9 @@ import householdRouter from './routes/households.js';
 import tasksRouter from './routes/tasks.js';
 import issuesRouter from './routes/issues.js';
 import activitiesRouter from './routes/activities.js';
+import uploadRouter from './routes/upload.js';
+import wikiRouter from './routes/wiki.js';
+import { startUpcomingNotificationsJob } from './jobs/upcomingNotifications.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -23,6 +26,8 @@ app.use('/api/households', householdRouter);
 app.use('/api/households/:id/tasks', tasksRouter);
 app.use('/api/households/:id/issues', issuesRouter);
 app.use('/api/households/:id/activities', activitiesRouter);
+app.use('/api/households/:id/wiki', wikiRouter);
+app.use('/api/upload', uploadRouter);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -97,6 +102,7 @@ app.use(
 if (process.env.NODE_ENV !== 'test') {
   const httpServer = createServer(app);
   initSocket(httpServer);
+  startUpcomingNotificationsJob();
 
   const server = httpServer.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
