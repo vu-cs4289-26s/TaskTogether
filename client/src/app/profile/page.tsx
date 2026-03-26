@@ -13,6 +13,8 @@ import type { Activity, CreateActivityInput } from '@/types/activities';
 
 import BaseModal from '@/components/modals/BaseModal';
 import Button from '@/components/ui/Button';
+import { getInitials, getAvatarColor } from '@/types/households'
+
 
 function pad2(n: number) {
   return String(n).padStart(2, '0');
@@ -150,6 +152,8 @@ export default function ProfilePage() {
   // Event details modal state
   const [openEventDetails, setOpenEventDetails] = useState(false);
   const [activeActivity, setActiveActivity] = useState<Activity | null>(null);
+
+  const avatarColor = getAvatarColor(user?.id);
 
   function openActivity(activityId: string) {
     const found = activities.find((a) => a.id === activityId) ?? null;
@@ -313,9 +317,12 @@ export default function ProfilePage() {
 
       <div className="bg-surface border-b border-divider px-6 py-8">
         <div className="max-w-[1400px] mx-auto flex items-center gap-6">
-          <div className="w-24 h-24 rounded-full bg-sage text-white flex items-center justify-center text-4xl font-bold border-4 border-divider flex-shrink-0">
-            {loading ? '…' : initials}
-          </div>
+            <div
+                className="w-24 h-24 rounded-full text-white flex items-center justify-center text-4xl font-bold border-4 border-divider flex-shrink-0"
+                style={{ backgroundColor: avatarColor }}
+                >
+                {loading ? '…' : initials}
+            </div>
 
           <div className="flex-1">
             <h1 className="text-[32px] font-heading font-bold mb-1">

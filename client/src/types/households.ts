@@ -35,9 +35,11 @@ export interface PaginationMeta {
 }
 
 // Helper: derive initials from a full name
+//edited to account for edge cases
 export function getInitials(name: string): string {
   return name
-    .split(' ')
+    .trim()
+    .split(/\s+/)
     .map((w) => w[0])
     .filter(Boolean)
     .join('')
@@ -46,12 +48,35 @@ export function getInitials(name: string): string {
 }
 
 // Helper: deterministic avatar color from user ID
-const AVATAR_COLORS = ['#5A7C5E', '#B85C4A', '#4A7C5A', '#C49347', '#6E6E70', '#7B5EA7'];
+//added more colors
+const AVATAR_COLORS = [
+  '#5A7C5E', // sage
+  '#B85C4A', // terracotta
+  '#6B8BA4', // dusty blue
+  '#D1A054', // mustard
+  '#7C5B8C', // plum
+  '#5F6B7A', // slate
+  '#C06C84', // rose
+  '#4F9A94', // teal
+  '#6C7BD0', // indigo
+  '#D87C6A', // coral
+  '#7A8F4E', // olive
+  '#5AA6C8', // sky
+];
 
-export function getAvatarColor(userId: string): string {
+//edited to export into appnavbar and profile page.
+function hashString(value: string): number {
   let hash = 0;
-  for (let i = 0; i < userId.length; i++) {
-    hash = userId.charCodeAt(i) + ((hash << 5) - hash);
+
+  for (let i = 0; i < value.length; i++) {
+    hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
   }
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+
+  return hash;
+}
+
+export function getAvatarColor(userKey?: string | null): string {
+  const safeKey = (userKey ?? '').trim();
+  if (!safeKey) return AVATAR_COLORS[0];
+  return AVATAR_COLORS[hashString(safeKey) % AVATAR_COLORS.length];
 }

@@ -7,6 +7,7 @@ import { ChevronDown, LogOut, Menu, Settings, User, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { listHouseholdsApi } from '@/lib/households.api';
 import type { Household } from '@/types/households';
+import { getInitials, getAvatarColor } from '@/types/households'
 
 interface AppNavbarProps {
   userName?: string;
@@ -14,16 +15,6 @@ interface AppNavbarProps {
   userInitials?: string;
 }
 
-function computeInitials(name?: string) {
-  const trimmed = (name ?? '').trim();
-  if (!trimmed) return '??';
-  return trimmed
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((s) => s[0]!.toUpperCase())
-    .join('');
-}
 
 export default function AppNavbar(props: AppNavbarProps) {
   const pathname = usePathname();
@@ -32,7 +23,7 @@ export default function AppNavbar(props: AppNavbarProps) {
 
   const userName = props.userName ?? user?.name ?? 'Unknown User';
   const userEmail = props.userEmail ?? user?.email ?? '';
-  const userInitials = props.userInitials ?? computeInitials(userName);
+  const userInitials = props.userInitials ?? getInitials(userName);
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -46,6 +37,8 @@ export default function AppNavbar(props: AppNavbarProps) {
   const householdMatch = pathname.match(/^\/households\/([^/]+)/);
   const currentHouseholdId = householdMatch?.[1] ?? null;
   const isOnHouseholdPage = !!currentHouseholdId;
+
+  const avatarColor = getAvatarColor(user?.id);
 
   // Fetch households on mount
   useEffect(() => {
@@ -165,13 +158,14 @@ export default function AppNavbar(props: AppNavbarProps) {
           {/* User avatar dropdown */}
           <li className="relative" ref={dropdownRef}>
             <div
-              onClick={() => setDropdownOpen((prev) => !prev)}
-              className={`w-10 h-10 rounded-full bg-sage text-white flex items-center justify-center font-semibold cursor-pointer border-2 transition-all ${
+                onClick={() => setDropdownOpen((prev) => !prev)}
+                className={`w-10 h-10 rounded-full text-white flex items-center justify-center font-semibold cursor-pointer border-2 transition-all ${
                 dropdownOpen ? 'border-sage scale-105' : 'border-divider hover:border-sage hover:scale-105'
-              }`}
-              title={userName}
+                }`}
+                style={{ backgroundColor: avatarColor }}
+                title={userName}
             >
-              {userInitials}
+                {userInitials}
             </div>
 
             {dropdownOpen && (
