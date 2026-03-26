@@ -43,6 +43,7 @@ export default function AddTaskModal({
   const [assignedToUserId, setAssignedToUserId] = useState('');
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrencePattern, setRecurrencePattern] = useState<RecurrencePattern>('weekly');
+  const [isRotating, setIsRotating] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
@@ -57,6 +58,7 @@ export default function AddTaskModal({
       setAssignedToUserId('');
       setIsRecurring(false);
       setRecurrencePattern('weekly');
+      setIsRotating(false);
       setLocalError(null);
       setShowDeleteConfirm(false);
       return;
@@ -71,6 +73,7 @@ export default function AddTaskModal({
       setAssignedToUserId(editingTask.assignments[0]?.userId || '');
       setIsRecurring(editingTask.isRecurring);
       setRecurrencePattern((editingTask.recurrencePattern as RecurrencePattern) || 'weekly');
+      setIsRotating(editingTask.isRotating);
     }
 
     queueMicrotask(() => titleInputRef.current?.focus());
@@ -94,6 +97,7 @@ export default function AddTaskModal({
         dueDate: dueDate ? new Date(dueDate).toISOString() : null,
         isRecurring,
         recurrencePattern: isRecurring ? recurrencePattern : undefined,
+        isRotating: isRecurring ? isRotating : false,
       };
       await onUpdate(input);
     } else {
@@ -107,6 +111,7 @@ export default function AddTaskModal({
       if (isRecurring) {
         input.isRecurring = true;
         input.recurrencePattern = recurrencePattern;
+        if (isRotating) input.isRotating = true;
       }
       await onCreate(input);
     }
@@ -246,29 +251,48 @@ export default function AddTaskModal({
           )}
 
           {/* Recurring */}
-          <div className="flex items-center gap-3">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={isRecurring}
-                onChange={(e) => setIsRecurring(e.target.checked)}
-                disabled={isSubmitting}
-                className="w-4 h-4 accent-sage"
-              />
-              <span className="text-sm font-medium text-text-primary">Recurring task</span>
-            </label>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isRecurring}
+                  onChange={(e) => {
+                    setIsRecurring(e.target.checked);
+                    if (!e.target.checked) setIsRotating(false);
+                  }}
+                  disabled={isSubmitting}
+                  className="w-4 h-4 accent-sage"
+                />
+                <span className="text-sm font-medium text-text-primary">Recurring task</span>
+              </label>
+
+              {isRecurring && (
+                <select
+                  value={recurrencePattern}
+                  onChange={(e) => setRecurrencePattern(e.target.value as RecurrencePattern)}
+                  disabled={isSubmitting}
+                  className="px-3 py-1.5 rounded-sm border border-divider bg-surface text-text-primary text-sm transition focus:outline-none focus:border-sage focus:ring-4 focus:ring-sage/10"
+                >
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                </select>
+              )}
+            </div>
 
             {isRecurring && (
-              <select
-                value={recurrencePattern}
-                onChange={(e) => setRecurrencePattern(e.target.value as RecurrencePattern)}
-                disabled={isSubmitting}
-                className="px-3 py-1.5 rounded-sm border border-divider bg-surface text-text-primary text-sm transition focus:outline-none focus:border-sage focus:ring-4 focus:ring-sage/10"
-              >
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
-              </select>
+              <label className="flex items-center gap-2 cursor-pointer ml-6">
+                <input
+                  type="checkbox"
+                  checked={isRotating}
+                  onChange={(e) => setIsRotating(e.target.checked)}
+                  disabled={isSubmitting}
+                  className="w-4 h-4 accent-sage"
+                />
+                <span className="text-sm text-text-primary">Rotate assignment among members</span>
+                <span className="text-xs text-text-secondary">(round-robin)</span>
+              </label>
             )}
           </div>
 

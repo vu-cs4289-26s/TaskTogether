@@ -58,6 +58,9 @@ enum ActivityStatus {
 enum NotificationType {
   TASK_ASSIGNED
   TASK_COMPLETED
+  TASK_UPCOMING
+  ISSUE_STATUS_CHANGED
+  EVENT_UPCOMING
 }
 
 // ============================================
@@ -84,13 +87,6 @@ model User {
   // Issues
   reportedIssues     Issue[]          @relation("IssueReporter")
   issueComments      IssueComment[]
-
-  // Communication + Wiki
-  announcements      Announcement[]
-  discussionThreads  DiscussionThread[]
-  discussionReplies  DiscussionReply[]
-  mentions           Mention[]        @relation("MentionedUser")
-  createdMentions    Mention[]        @relation("MentionCreator")
 
   // Quality Time
   activityParticipants ActivityParticipant[]
@@ -125,8 +121,6 @@ model Household {
   tasks          Task[]
   issues         Issue[]
   rules          HouseholdRule[]
-  announcements  Announcement[]
-  discussions    DiscussionThread[]
   activities     QualityTimeActivity[]
   invites        HouseholdInvite[]
   deleteVotes    HouseholdDeleteVote[]
@@ -302,107 +296,6 @@ model IssueComment {
   @@index([issueId])
   @@index([userId])
   @@index([createdAt])
-}
-
-// ============================================
-// COMMUNICATION HUB
-// ============================================
-
-model Announcement {
-  id        String   @id @default(uuid())
-  title     String
-  content   String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  authorId    String
-  author      User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  
-  householdId String
-  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
-  
-  // Mentions in this announcement
-  mentions Mention[]
-
-  @@index([householdId])
-  @@index([authorId])
-  @@index([createdAt])
-}
-
-model DiscussionThread {
-  id        String   @id @default(uuid())
-  title     String
-  content   String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  authorId    String
-  author      User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  
-  householdId String
-  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
-  
-  // Replies and mentions
-  replies  DiscussionReply[]
-  mentions Mention[]
-
-  @@index([householdId])
-  @@index([authorId])
-  @@index([createdAt])
-}
-
-model DiscussionReply {
-  id        String   @id @default(uuid())
-  content   String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  threadId String
-  thread   DiscussionThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  
-  authorId String
-  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  
-  // Mentions in this reply
-  mentions Mention[]
-
-  @@index([threadId])
-  @@index([authorId])
-  @@index([createdAt])
-}
-
-model Mention {
-  id        String   @id @default(uuid())
-  isRead    Boolean  @default(false)
-  createdAt DateTime @default(now())
-
-  // Who is mentioned
-  userId String
-  user   User   @relation("MentionedUser", fields: [userId], references: [id], onDelete: Cascade)
-  
-  // Who created the mention
-  creatorId String
-  creator   User   @relation("MentionCreator", fields: [creatorId], references: [id], onDelete: Cascade)
-  
-  // Where the mention is (polymorphic - only one should be set)
-  announcementId String?
-  announcement   Announcement? @relation(fields: [announcementId], references: [id], onDelete: Cascade)
-  
-  threadId String?
-  thread   DiscussionThread? @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  
-  replyId String?
-  reply   DiscussionReply? @relation(fields: [replyId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([creatorId])
-  @@index([isRead])
-  @@index([announcementId])
-  @@index([threadId])
-  @@index([replyId])
 }
 
 // ============================================
