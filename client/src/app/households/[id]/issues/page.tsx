@@ -11,27 +11,16 @@ import ReportIssueModal, {
 } from '@/components/modals/ReportIssueModal';
 import IssueDetailPanel from '@/components/issues/IssueDetailPanel';
 import { getHousehold } from '@/lib/households';
-import {
-    createIssueApi,
-    deleteIssueApi,
-    listIssuesApi,
-    updateIssueApi,
-} from '@/lib/issues.api';
+import { createIssueApi, deleteIssueApi, listIssuesApi, updateIssueApi } from '@/lib/issues.api';
 import type { Household } from '@/types/households';
-import type {
-    Issue,
-    IssuePriority,
-    IssueStatus,
-    IssueType,
-} from '@/types/issues';
+import type { Issue, IssuePriority, IssueStatus, IssueType } from '@/types/issues';
 import IssueCard from '@/components/issues/IssueCard';
 
 import IssueModalHeader from '@/components/issues/IssueHeaderModal';
-import {
-    humanizeEnum,
-    statusBadgeClasses,
-} from '@/lib/issues-display';
+import { humanizeEnum, statusBadgeClasses } from '@/lib/issues-display';
 import { issueToForm, toUpdateIssueInput } from '@/lib/issues-form';
+import useDeleteFlow from '@/hook/useDeleteFlow';
+import { createIssueCommentApi } from '@/lib/issues.api';
 
 export default function IssuesPage() {
     const router = useRouter();
@@ -51,14 +40,16 @@ export default function IssuesPage() {
     const [activeStatus, setActiveStatus] = useState<'ALL' | IssueStatus>('ALL');
     const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'priority'>('newest');
 
-    //this is for the delete modal!
-    const [isDeleteOpen, setIsDeleteOpen] = useState(false);
-    const [deleteTarget, setDeleteTarget] = useState<Issue | null>(null);
-    const [isDeleting, setIsDeleting] = useState(false);
-    function handleDeleteClick(issue: Issue) {
-        setDeleteTarget(issue);
-        setIsDeleteOpen(true);
-    }
+    //this is for the delete modal! + flow
+    const {
+        isDeleteOpen,
+        deleteTarget,
+        isDeleting,
+        setIsDeleting,
+        openDelete,
+        closeDelete,
+        forceCloseDelete,
+    } = useDeleteFlow<Issue>();
 
     const [priorityFilters, setPriorityFilters] = useState<Record<IssuePriority, boolean>>({
         URGENT: true,
@@ -238,7 +229,7 @@ export default function IssuesPage() {
     }
 
     //updated for delete modal!
-    //for delete modal!
+    //for delete modal! + flow
     async function handleDelete(issueId: string) {
         if (!householdId) return;
 
@@ -248,8 +239,7 @@ export default function IssuesPage() {
             await deleteIssueApi(householdId, issueId);
 
             setIssues((prev) => prev.filter((issue) => issue.id !== issueId));
-            setIsDeleteOpen(false);
-            setDeleteTarget(null);
+            forceCloseDelete();
             setIsDetailOpen(false);
             setSelectedIssue(null);
 
@@ -263,24 +253,6 @@ export default function IssuesPage() {
             setIsDeleting(false);
         }
     }
-
-    // async function handleDelete(issueId: string) {
-    //     if (!householdId) return;
-
-    //     try {
-    //         await deleteIssueApi(householdId, issueId);
-    //         setIssues((prev) => prev.filter((issue) => issue.id !== issueId));
-    //         setIsDetailOpen(false);
-    //         setSelectedIssue(null);
-
-    //         if (editTarget?.id === issueId) {
-    //             setEditTarget(null);
-    //             setIsEditOpen(false);
-    //         }
-    //     } catch (err) {
-    //         console.error('Failed to delete issue:', err);
-    //     }
-    // }
 
     async function handleCreate(values: ReportIssueFormValues) {
         if (!householdId) return;
@@ -328,7 +300,32 @@ export default function IssuesPage() {
         }
     }
 
+    // for comments
+    async function handleAddComment(issueId: string, content: string) {
+        if (!householdId) return;
 
+        try {
+            const created = await createIssueCommentApi(householdId, issueId, {
+                content,
+            });
+
+            setIssues((prev) =>
+                prev.map((issue) =>
+                    issue.id === issueId
+                        ? { ...issue, comments: [...issue.comments, created] }
+                        : issue
+                )
+            );
+
+            setSelectedIssue((prev) =>
+                prev && prev.id === issueId
+                    ? { ...prev, comments: [...prev.comments, created] }
+                    : prev
+            );
+        } catch (err) {
+            console.error('Failed to add comment:', err);
+        }
+    }
 
 
     const issuesForStatusCounts = useMemo(() => {
@@ -701,7 +698,7 @@ export default function IssuesPage() {
                 </div>
             </div>
 
-            {isReportOpen && householdId && (
+            {isReportOpen && (
                 <ReportIssueModal
                     key="create-issue"
                     open={true}
@@ -754,11 +751,11 @@ export default function IssuesPage() {
                             isAdmin={isAdmin}
                             canEdit={canEditIssue(selectedIssue)}
                             onEdit={handleEditClick}
-                            //for delete modal!
                             onDelete={() => {
-                                if (selectedIssue) handleDeleteClick(selectedIssue);
+                                if (selectedIssue) openDelete(selectedIssue);
                             }}
                             onStatusChange={handleStatusChange}
+                            onAddComment={handleAddComment}
                         />
                     </>
                 )}
@@ -770,8 +767,7 @@ export default function IssuesPage() {
                 isDeleting={isDeleting}
                 onClose={() => {
                     if (isDeleting) return;
-                    setIsDeleteOpen(false);
-                    setDeleteTarget(null);
+                    forceCloseDelete();
                 }}
                 onConfirm={handleDelete}
             />

@@ -6,6 +6,7 @@ import ReportIssueModal, { type ReportIssueFormValues } from '@/components/modal
 import IssueDetailPanel from './IssueDetailPanel';
 import { useRouter } from 'next/navigation';
 import IssueDeleteModal from './IssueDeleteModal';
+import useDeleteFlow from '@/hook/useDeleteFlow';
 
 import {
     createIssueApi,
@@ -14,9 +15,10 @@ import {
     updateIssueApi,
 } from '@/lib/issues.api';
 
-import type { Issue, IssueStatus } from '@/types/issues';import IssueCard from './IssueCard';
+import type { Issue, IssueStatus } from '@/types/issues'; import IssueCard from './IssueCard';
 
 import IssueModalHeader from '@/components/issues/IssueHeaderModal';
+import { createIssueCommentApi } from '@/lib/issues.api';
 
 import { issueToForm, toUpdateIssueInput } from '@/lib/issues-form';
 
@@ -49,13 +51,17 @@ export default function IssuesSection({ householdId, isAdmin, currentUserId, ini
     const router = useRouter();
 
     // delete modal
-    const [isDeleteOpen, setIsDeleteOpen] = useState(false);
-    const [deleteTarget, setDeleteTarget] = useState<Issue | null>(null);
-    const [isDeleting, setIsDeleting] = useState(false);
-    function handleDeleteClick(issue: Issue) {
-        setDeleteTarget(issue);
-        setIsDeleteOpen(true);
-    }
+    //deleted handleDeleteClick to accommodate new delete flow hook
+    const {
+        isDeleteOpen,
+        deleteTarget,
+        isDeleting,
+        setIsDeleting,
+        openDelete,
+        closeDelete,
+        forceCloseDelete,
+    } = useDeleteFlow<Issue>();
+
 
     function canEditIssue(issue: Issue | null) {
         if (!issue) return false;
@@ -105,7 +111,7 @@ export default function IssuesSection({ householdId, isAdmin, currentUserId, ini
     }
 
     //updated for delete modal!
-    //for delete modal!
+    //for delete modal hook flow
     async function handleDelete(issueId: string) {
         if (!householdId) return;
 
@@ -115,8 +121,7 @@ export default function IssuesSection({ householdId, isAdmin, currentUserId, ini
             await deleteIssueApi(householdId, issueId);
 
             setIssues((prev) => prev.filter((issue) => issue.id !== issueId));
-            setIsDeleteOpen(false);
-            setDeleteTarget(null);
+            forceCloseDelete();
             setIsDetailOpen(false);
             setSelectedIssue(null);
 
@@ -175,6 +180,33 @@ export default function IssuesSection({ householdId, isAdmin, currentUserId, ini
             setSubmitError(e instanceof Error ? e.message : 'Failed to update issue.');
         } finally {
             setIsSubmitting(false);
+        }
+    }
+
+    // for comment section
+    async function handleAddComment(issueId: string, content: string) {
+        if (!householdId) return;
+
+        try {
+            const created = await createIssueCommentApi(householdId, issueId, {
+                content,
+            });
+
+            setIssues((prev) =>
+                prev.map((issue) =>
+                    issue.id === issueId
+                        ? { ...issue, comments: [...issue.comments, created] }
+                        : issue
+                )
+            );
+
+            setSelectedIssue((prev) =>
+                prev && prev.id === issueId
+                    ? { ...prev, comments: [...prev.comments, created] }
+                    : prev
+            );
+        } catch (err) {
+            console.error('Failed to add comment:', err);
         }
     }
 
@@ -277,9 +309,10 @@ export default function IssuesSection({ householdId, isAdmin, currentUserId, ini
                         canEdit={canEditIssue(selectedIssue)}
                         onEdit={handleEditClick}
                         onDelete={() => {
-                            if (selectedIssue) handleDeleteClick(selectedIssue);
+                            if (selectedIssue) openDelete(selectedIssue);
                         }}
                         onStatusChange={handleStatusChange}
+                        onAddComment={handleAddComment}
                     />
                 )}
             </BaseModal>
@@ -288,11 +321,7 @@ export default function IssuesSection({ householdId, isAdmin, currentUserId, ini
                 open={isDeleteOpen}
                 issue={deleteTarget}
                 isDeleting={isDeleting}
-                onClose={() => {
-                    if (isDeleting) return;
-                    setIsDeleteOpen(false);
-                    setDeleteTarget(null);
-                }}
+                onClose={closeDelete}
                 onConfirm={handleDelete}
             />
 
