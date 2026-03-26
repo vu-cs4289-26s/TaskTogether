@@ -404,7 +404,7 @@ export default function HouseholdDashboardPage() {
     }
   }
 
-  async function handleCompleteTask(input: { notes?: string }) {
+  async function handleCompleteTask(input: { notes?: string; photoUrl?: string }) {
     if (!id || !completingTask) return;
     try {
       setIsCompleting(true);

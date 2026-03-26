@@ -1,39 +1,46 @@
 'use client';
 
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import AppNavbar from '@/components/shared/AppNavbar';
 import { listHouseholdsApi } from '@/lib/households.api';
+import { listWikiSectionsApi, updateWikiSectionApi } from '@/lib/wiki.api';
 import type { Household } from '@/types/households';
+import type { WikiSection } from '@/types/wiki';
+import { Pencil, X, Save, Loader2 } from 'lucide-react';
 
-type SectionId =
-    | 'garbage'
-    | 'appliances'
-    | 'bills'
-    | 'weather'
-    | 'parking'
-    | 'rules'
-    | 'misc';
+// Lazy-load the editor so SSR doesn't choke on ProseMirror DOM APIs
+const RichTextEditor = dynamic(() => import('@/components/wiki/RichTextEditor'), {
+    ssr: false,
+    loading: () => <div className="h-[160px] rounded-sm border border-divider bg-base animate-pulse" />,
+});
 
-const CONTENTS: { id: SectionId; title: string }[] = [
-    { id: 'garbage', title: 'Garbage & Recycling' },
-    { id: 'appliances', title: 'Appliances' },
-    { id: 'bills', title: 'Bills & Subscriptions' },
-    { id: 'weather', title: 'Weather & Seasonal' },
-    { id: 'parking', title: 'Parking & Storage' },
-    { id: 'rules', title: 'Rules & Expectations' },
-    { id: 'misc', title: 'Miscellaneous' },
+const DEFAULT_SECTIONS = [
+    { slug: 'garbage', title: 'Garbage & Recycling' },
+    { slug: 'appliances', title: 'Appliances' },
+    { slug: 'bills', title: 'Bills & Subscriptions' },
+    { slug: 'weather', title: 'Weather & Seasonal' },
+    { slug: 'parking', title: 'Parking & Storage' },
+    { slug: 'rules', title: 'Rules & Expectations' },
+    { slug: 'misc', title: 'Miscellaneous' },
 ];
+
+type SectionSlug = (typeof DEFAULT_SECTIONS)[number]['slug'];
 
 export default function WikiPage() {
     return (
-        <Suspense fallback={
-            <div className="min-h-screen bg-base">
-                <AppNavbar />
-                <div className="max-w-[1400px] mx-auto px-6 py-12 text-text-secondary">Loading...</div>
-            </div>
-        }>
+        <Suspense
+            fallback={
+                <div className="min-h-screen bg-base">
+                    <AppNavbar />
+                    <div className="max-w-[1400px] mx-auto px-6 py-12 text-text-secondary">
+                        Loading...
+                    </div>
+                </div>
+            }
+        >
             <WikiPageContent />
         </Suspense>
     );
@@ -43,11 +50,21 @@ function WikiPageContent() {
     const searchParams = useSearchParams();
     const householdId = searchParams.get('household');
 
-    const [active, setActive] = useState<SectionId>('garbage');
+    const [active, setActive] = useState<string>('garbage');
     const [households, setHouseholds] = useState<Household[]>([]);
     const [householdsLoading, setHouseholdsLoading] = useState(!householdId);
 
-    const sectionIds = useMemo(() => CONTENTS.map((c) => c.id), []);
+    // Wiki data
+    const [sections, setSections] = useState<WikiSection[]>([]);
+    const [sectionsLoading, setSectionsLoading] = useState(false);
+    const [editing, setEditing] = useState(false);
+    const [drafts, setDrafts] = useState<Record<string, string>>({});
+    const [saving, setSaving] = useState<Record<string, boolean>>({});
+
+    const sectionSlugs = useMemo(
+        () => (sections.length > 0 ? sections.map((s) => s.slug) : DEFAULT_SECTIONS.map((s) => s.slug)),
+        [sections]
+    );
 
     // Fetch households for the picker when no household is selected
     useEffect(() => {
@@ -63,45 +80,111 @@ function WikiPageContent() {
                 if (!cancelled) setHouseholdsLoading(false);
             }
         })();
-        return () => { cancelled = true; };
+        return () => {
+            cancelled = true;
+        };
     }, [householdId]);
 
-   // Scroll-spy for wiki sidebar (must be above early return to satisfy hook rules)
-   useEffect(() => {
-        if (!householdId) return; // no-op when showing picker
+    // Fetch wiki sections
+    useEffect(() => {
+        if (!householdId) return;
+        let cancelled = false;
+        (async () => {
+            setSectionsLoading(true);
+            try {
+                const data = await listWikiSectionsApi(householdId);
+                if (!cancelled) setSections(data);
+            } catch {
+                // gracefully handle
+            } finally {
+                if (!cancelled) setSectionsLoading(false);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [householdId]);
+
+    // Scroll-spy
+    useEffect(() => {
+        if (!householdId) return;
         function onScroll() {
             const eyeY = window.innerHeight * 0.35;
-
             const bottomSlack = 8;
             const scrolledToBottom =
                 window.innerHeight + window.scrollY >= document.body.scrollHeight - bottomSlack;
 
             if (scrolledToBottom) {
-                setActive(sectionIds[sectionIds.length - 1] as SectionId);
+                setActive(sectionSlugs[sectionSlugs.length - 1]);
                 return;
             }
 
-            let best: { id: SectionId; dist: number } | null = null;
-
-            for (const id of sectionIds) {
+            let best: { id: string; dist: number } | null = null;
+            for (const id of sectionSlugs) {
                 const el = document.getElementById(id);
                 if (!el) continue;
-
                 const top = el.getBoundingClientRect().top;
                 const dist = eyeY - top;
-
                 if (dist >= 0 && (best === null || dist < best.dist)) {
-                    best = { id: id as SectionId, dist };
+                    best = { id, dist };
                 }
             }
-
-            setActive(best?.id ?? (sectionIds[0] as SectionId));
+            setActive(best?.id ?? sectionSlugs[0]);
         }
 
         onScroll();
         window.addEventListener('scroll', onScroll, { passive: true });
         return () => window.removeEventListener('scroll', onScroll);
-    }, [sectionIds, householdId]);
+    }, [sectionSlugs, householdId]);
+
+    // Enter edit mode — seed drafts from current content
+    const enterEdit = useCallback(() => {
+        const d: Record<string, string> = {};
+        for (const s of sections) {
+            d[s.slug] = s.content;
+        }
+        setDrafts(d);
+        setEditing(true);
+    }, [sections]);
+
+    // Cancel edit mode
+    const cancelEdit = useCallback(() => {
+        setEditing(false);
+        setDrafts({});
+    }, []);
+
+    // Save a single section
+    const saveSection = useCallback(
+        async (slug: string) => {
+            if (!householdId) return;
+            const content = drafts[slug] ?? '';
+            setSaving((prev) => ({ ...prev, [slug]: true }));
+            try {
+                const updated = await updateWikiSectionApi(householdId, slug, { content });
+                setSections((prev) => prev.map((s) => (s.slug === slug ? updated : s)));
+            } catch {
+                // silently handle — could add toast later
+            } finally {
+                setSaving((prev) => ({ ...prev, [slug]: false }));
+            }
+        },
+        [householdId, drafts]
+    );
+
+    // Save all changed sections then exit edit mode
+    const saveAll = useCallback(async () => {
+        if (!householdId) return;
+        const changed = sections.filter((s) => drafts[s.slug] !== undefined && drafts[s.slug] !== s.content);
+        if (changed.length === 0) {
+            setEditing(false);
+            return;
+        }
+        for (const s of changed) {
+            await saveSection(s.slug);
+        }
+        setEditing(false);
+        setDrafts({});
+    }, [householdId, sections, drafts, saveSection]);
 
     // Show "pick a household" when no household is selected
     if (!householdId) {
@@ -142,14 +225,29 @@ function WikiPageContent() {
         );
     }
 
-    function scrollTo(id: SectionId) {
+    function scrollTo(id: string) {
         document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
+
+    // Resolve display sections — use API data if available, else defaults
+    const displaySections =
+        sections.length > 0
+            ? sections
+            : DEFAULT_SECTIONS.map((s) => ({
+                  id: s.slug,
+                  slug: s.slug,
+                  title: s.title,
+                  content: '',
+                  createdAt: '',
+                  updatedAt: '',
+                  updatedBy: null,
+              }));
 
     return (
         <div className="min-h-screen bg-base">
             <AppNavbar />
 
+            {/* Header */}
             <div className="bg-surface border-b border-divider">
                 <div className="max-w-[1400px] mx-auto px-6 py-10 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
                     <div>
@@ -157,50 +255,60 @@ function WikiPageContent() {
                             Household Wiki
                         </h1>
                         <p className="mt-1 text-sm text-text-secondary">
-                            Main Street Apartment
-                            <span className="ml-2 inline-block px-2 py-1 rounded text-[11px] font-semibold uppercase bg-sage/10 text-sage border border-sage">
-                                Admin
-                            </span>
+                            Shared knowledge base for your household
                         </p>
                     </div>
 
-                    <button
-                        type="button"
-                        className="px-5 py-2.5 rounded-sm bg-sage text-white font-medium flex items-center gap-2 transition-all hover:bg-sage-hover hover:-translate-y-px"
-                        onClick={() => { }}
-                        title="Edit mode will be wired up later"
-                    >
-                        <svg
-                            className="w-4 h-4"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                        >
-                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                        </svg>
-                        Edit Wiki
-                    </button>
+                    <div className="flex items-center gap-3">
+                        {editing ? (
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={cancelEdit}
+                                    className="px-5 py-2.5 rounded-sm border border-divider text-text-secondary font-medium flex items-center gap-2 transition-all hover:bg-soft-highlight"
+                                >
+                                    <X size={16} />
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={saveAll}
+                                    className="px-5 py-2.5 rounded-sm bg-sage text-white font-medium flex items-center gap-2 transition-all hover:bg-sage-hover hover:-translate-y-px"
+                                >
+                                    <Save size={16} />
+                                    Save All
+                                </button>
+                            </>
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={enterEdit}
+                                disabled={sectionsLoading}
+                                className="px-5 py-2.5 rounded-sm bg-sage text-white font-medium flex items-center gap-2 transition-all hover:bg-sage-hover hover:-translate-y-px disabled:opacity-50"
+                            >
+                                <Pencil size={16} />
+                                Edit Wiki
+                            </button>
+                        )}
+                    </div>
                 </div>
             </div>
 
+            {/* Content */}
             <div className="max-w-[1400px] mx-auto px-6 py-10 grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-10">
+                {/* Sidebar */}
                 <aside className="lg:sticky lg:top-[120px] h-fit">
                     <div className="text-xs font-semibold uppercase tracking-wide text-text-secondary mb-4">
                         Contents
                     </div>
-
                     <nav className="flex flex-col gap-1">
-                        {CONTENTS.map((item) => {
-                            const isActive = active === item.id;
+                        {displaySections.map((item) => {
+                            const isActive = active === item.slug;
                             return (
                                 <button
-                                    key={item.id}
+                                    key={item.slug}
                                     type="button"
-                                    onClick={() => scrollTo(item.id)}
+                                    onClick={() => scrollTo(item.slug)}
                                     className={[
                                         'text-left px-4 py-2 rounded-sm text-sm font-medium transition border-l-4',
                                         isActive
@@ -214,283 +322,76 @@ function WikiPageContent() {
                         })}
                     </nav>
                 </aside>
+
+                {/* Main content */}
                 <main className="min-w-0 space-y-6">
-                    <section
-                        id="garbage"
-                        className="bg-surface rounded-md p-8 border border-divider shadow-sm scroll-mt-32"
-                    >
-                        <SectionHeader title="Garbage & Recycling" />
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <InfoItem label="Trash Pickup" value="Mondays & Thursdays, 7:00 AM" />
-                            <InfoItem label="Recycling Pickup" value="Wednesdays, 7:00 AM" />
-                            <InfoItem label="Bin Location" value="Side alley, must be out by 6:30 AM" />
-                            <InfoItem label="Special Items" value="Call 555-WASTE for bulk pickup scheduling" />
+                    {sectionsLoading ? (
+                        <div className="flex items-center justify-center py-20 text-text-secondary">
+                            <Loader2 size={24} className="animate-spin mr-2" />
+                            Loading wiki...
                         </div>
+                    ) : (
+                        displaySections.map((section) => (
+                            <section
+                                key={section.slug}
+                                id={section.slug}
+                                className="bg-surface rounded-md p-8 border border-divider shadow-sm scroll-mt-32"
+                            >
+                                <div className="mb-6 pb-4 border-b border-divider flex items-center justify-between">
+                                    <h3 className="text-xl font-heading font-semibold text-sage">
+                                        {section.title}
+                                    </h3>
+                                    {editing && (
+                                        <button
+                                            type="button"
+                                            onClick={() => saveSection(section.slug)}
+                                            disabled={saving[section.slug]}
+                                            className="px-3 py-1.5 rounded-sm bg-sage text-white text-sm font-medium flex items-center gap-1.5 transition-all hover:bg-sage-hover disabled:opacity-50"
+                                        >
+                                            {saving[section.slug] ? (
+                                                <Loader2 size={14} className="animate-spin" />
+                                            ) : (
+                                                <Save size={14} />
+                                            )}
+                                            Save
+                                        </button>
+                                    )}
+                                </div>
 
-                        <LastUpdated text="Last updated by Sarah Chen on Feb 1, 2026" />
-                    </section>
+                                {editing ? (
+                                    <RichTextEditor
+                                        content={drafts[section.slug] ?? section.content}
+                                        onChange={(html) =>
+                                            setDrafts((prev) => ({ ...prev, [section.slug]: html }))
+                                        }
+                                        placeholder={`Add content for ${section.title}...`}
+                                    />
+                                ) : section.content ? (
+                                    <div
+                                        className="prose prose-sm max-w-none text-text-secondary [&_h2]:text-text-primary [&_h3]:text-text-primary [&_strong]:text-text-primary [&_a]:text-sage"
+                                        dangerouslySetInnerHTML={{ __html: section.content }}
+                                    />
+                                ) : (
+                                    <p className="text-text-secondary/60 italic text-sm">
+                                        No content yet. Click &quot;Edit Wiki&quot; to add information.
+                                    </p>
+                                )}
 
-                    <section
-                        id="appliances"
-                        className="bg-surface rounded-md p-8 border border-divider shadow-sm scroll-mt-32"
-                    >
-                        <SectionHeader title="Appliance Maintenance" />
-
-                        <div className="divide-y divide-divider">
-                            <ListItem
-                                left={
-                                    <>
-                                        <div className="font-semibold text-text-primary">
-                                            Dishwasher <span className="font-normal">- GE Model GDT695SSJSS</span>
-                                        </div>
-                                        <div className="text-[13px] text-text-secondary">
-                                            Included with apartment
-                                        </div>
-                                    </>
-                                }
-                                right={<span className="text-[13px] text-text-secondary">Maintenance: 555-HOME-FIX</span>}
-                            />
-                            <ListItem
-                                left={
-                                    <>
-                                        <div className="font-semibold text-text-primary">
-                                            Washer/Dryer <span className="font-normal">- Samsung WF45R6100AW</span>
-                                        </div>
-                                        <div className="text-[13px] text-text-secondary">
-                                            Included with apartment
-                                        </div>
-                                    </>
-                                }
-                                right={<span className="text-[13px] text-text-secondary">Warranty until Dec 2026</span>}
-                            />
-                            <ListItem
-                                left={
-                                    <>
-                                        <div className="font-semibold text-text-primary">
-                                            Refrigerator <span className="font-normal">- Whirlpool WRF535SWHZ</span>
-                                        </div>
-                                        <div className="text-[13px] text-text-secondary">
-                                            Owned by landlord
-                                        </div>
-                                    </>
-                                }
-                                right={
-                                    <span className="text-[13px] text-text-secondary">
-                                        Contact property manager for repairs
-                                    </span>
-                                }
-                            />
-                            <ListItem
-                                left={
-                                    <>
-                                        <div className="font-semibold text-text-primary">Air Filter</div>
-                                        <div className="text-[13px] text-text-secondary">
-                                            Replace quarterly (16x25x1)
-                                        </div>
-                                    </>
-                                }
-                                right={<span className="text-[13px] text-text-secondary">Next: May 2026</span>}
-                            />
-                        </div>
-
-                        <LastUpdated text="Last updated by Michael Kim on Jan 28, 2026" />
-                    </section>
-
-                    <section
-                        id="bills"
-                        className="bg-surface rounded-md p-8 border border-divider shadow-sm scroll-mt-32"
-                    >
-                        <div className="flex items-start justify-between gap-6 mb-6 pb-4 border-b border-divider">
-                            <h3 className="text-xl font-heading font-semibold text-sage">
-                                Bills & Subscriptions
-                            </h3>
-
-                            <span className="inline-flex items-center gap-2 px-2 py-1 rounded text-[11px] font-semibold uppercase bg-pending/10 text-pending border border-pending">
-                                <svg
-                                    className="w-4 h-4"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                >
-                                    <circle cx="12" cy="12" r="10" />
-                                    <polyline points="12 6 12 12 16 14" />
-                                </svg>
-                                2 Pending Changes
-                            </span>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <InfoItem label="Rent" value="$2,400/month - Due 1st of month" />
-                            <InfoItem label="Electric (ConEd)" value="~$120/month - Split 4 ways" />
-                            <InfoItem label="Internet (Spectrum)" value="$79.99/month - Split 4 ways" />
-                            <InfoItem label="Streaming Services" value="Netflix, Hulu (see shared doc)" />
-                        </div>
-
-                        <div className="mt-4 p-4 rounded-sm bg-soft-highlight">
-                            <div className="font-semibold text-sm text-text-primary">Package Delivery:</div>
-                            <p className="mt-1 text-sm text-text-secondary">
-                                Packages delivered to front lobby. Check mail room daily. Notify group chat
-                                when you receive a package for someone else.
-                            </p>
-                        </div>
-
-                        <LastUpdated text="Last updated by You on Feb 3, 2026" />
-                    </section>
-
-                    <section
-                        id="weather"
-                        className="bg-surface rounded-md p-8 border border-divider shadow-sm scroll-mt-32"
-                    >
-                        <SectionHeader title="Weather & Seasonal Info" />
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <InfoItem
-                                label="Winter (Nov-Mar)"
-                                value="Snow removal required within 24 hours of snowfall. Shovels in storage closet."
-                            />
-                            <InfoItem
-                                label="Summer (Jun-Aug)"
-                                value="AC filters should be cleaned monthly. Spare filters in hall closet."
-                            />
-                            <InfoItem
-                                label="Emergency Contacts"
-                                value="Building Super: 555-0123 | Landlord: 555-4567"
-                            />
-                        </div>
-
-                        <LastUpdated text="Last updated by Alex Lee on Jan 15, 2026" />
-                    </section>
-
-                    <section
-                        id="parking"
-                        className="bg-surface rounded-md p-8 border border-divider shadow-sm scroll-mt-32"
-                    >
-                        <SectionHeader title="Parking & Storage" />
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <InfoItem
-                                label="Assigned Parking"
-                                value="Spots #12 and #13 in underground garage. Access code: 4789"
-                            />
-                            <InfoItem
-                                label="Guest Parking"
-                                value="Street parking only. 2-hour limit on weekdays."
-                            />
-                            <InfoItem label="Storage Unit" value="Unit B-7 in basement. Key with Sarah." />
-                            <InfoItem
-                                label="Bike Storage"
-                                value="Bike rack outside back entrance. Bring own lock."
-                            />
-                        </div>
-
-                        <LastUpdated text="Last updated by Sarah Chen on Jan 20, 2026" />
-                    </section>
-
-                    <section
-                        id="rules"
-                        className="bg-surface rounded-md p-8 border border-divider shadow-sm scroll-mt-32"
-                    >
-                        <SectionHeader title="Household Rules & Expectations" />
-
-                        <div className="space-y-3 text-text-secondary leading-7">
-                            <p>
-                                <span className="font-semibold text-text-primary">Quiet Hours:</span> 10 PM -
-                                8 AM on weekdays, 11 PM - 9 AM on weekends
-                            </p>
-                            <p>
-                                <span className="font-semibold text-text-primary">Guests:</span> Please
-                                notify household 24 hours in advance for overnight guests. Maximum 2
-                                consecutive nights.
-                            </p>
-                            <p>
-                                <span className="font-semibold text-text-primary">Common Areas:</span> Clean
-                                up after yourself immediately. Kitchen should be clean by 10 PM daily.
-                            </p>
-                            <p>
-                                <span className="font-semibold text-text-primary">Temperature:</span> Keep
-                                thermostat between 68-72°F. Adjust for comfort but be mindful of energy
-                                costs.
-                            </p>
-                            <p>
-                                <span className="font-semibold text-text-primary">Shared Items:</span> Label
-                                personal food items. Shared items include condiments, cooking oil, and
-                                cleaning supplies.
-                            </p>
-                        </div>
-
-                        <LastUpdated text="Last updated by Sarah Chen on Jan 5, 2026" />
-                    </section>
-
-                    <section
-                        id="misc"
-                        className="bg-surface rounded-md p-8 border border-divider shadow-sm scroll-mt-32"
-                    >
-                        <SectionHeader title="Miscellaneous Details" />
-
-                        <div className="space-y-3 text-text-secondary leading-7">
-                            <p>
-                                <span className="font-semibold text-text-primary">WiFi Network:</span>{' '}
-                                MainStApt_5G | Password: Welcome2026!
-                            </p>
-                            <p>
-                                <span className="font-semibold text-text-primary">Key Copies:</span>{' '}
-                                Landlord has master. Spare key in lockbox (code with property manager).
-                            </p>
-                            <p>
-                                <span className="font-semibold text-text-primary">Mail:</span> Mailboxes in
-                                lobby. Box #4A. Check daily to avoid overflow.
-                            </p>
-                            <p>
-                                <span className="font-semibold text-text-primary">Laundry:</span> In-unit
-                                washer/dryer. Be courteous with timing if someone has clothes waiting.
-                            </p>
-                            <p>
-                                <span className="font-semibold text-text-primary">Pet Policy:</span> No pets
-                                per lease agreement.
-                            </p>
-                        </div>
-
-                        <LastUpdated text="Last updated by Michael Kim on Feb 2, 2026" />
-                    </section>
+                                {section.updatedBy && section.updatedAt && (
+                                    <div className="mt-4 text-xs text-text-secondary italic">
+                                        Last updated by {section.updatedBy.name} on{' '}
+                                        {new Date(section.updatedAt).toLocaleDateString('en-US', {
+                                            month: 'short',
+                                            day: 'numeric',
+                                            year: 'numeric',
+                                        })}
+                                    </div>
+                                )}
+                            </section>
+                        ))
+                    )}
                 </main>
             </div>
-        </div>
-    );
-}
-
-
-function SectionHeader({ title }: { title: string }) {
-    return (
-        <div className="mb-6 pb-4 border-b border-divider flex items-center justify-between">
-            <h3 className="text-xl font-heading font-semibold text-sage">{title}</h3>
-        </div>
-    );
-}
-
-function InfoItem({ label, value }: { label: string; value: string }) {
-    return (
-        <div className="flex flex-col gap-1">
-            <div className="text-[13px] font-semibold uppercase tracking-wide text-text-primary">
-                {label}
-            </div>
-            <div className="text-text-secondary">{value}</div>
-        </div>
-    );
-}
-
-function LastUpdated({ text }: { text: string }) {
-    return <div className="mt-4 text-xs text-text-secondary italic">{text}</div>;
-}
-
-function ListItem({ left, right }: { left: React.ReactNode; right: React.ReactNode }) {
-    return (
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 py-3">
-            <div>{left}</div>
-            <div className="sm:text-right">{right}</div>
         </div>
     );
 }

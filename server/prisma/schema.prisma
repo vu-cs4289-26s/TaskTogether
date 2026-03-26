@@ -102,6 +102,9 @@ model User {
   // Notifications
   notifications Notification[] @relation("UserNotifications")
 
+  // Wiki
+  wikiSectionsUpdated WikiSection[] @relation("WikiUpdatedBy")
+
   @@index([email])
 }
 
@@ -128,6 +131,7 @@ model Household {
   invites        HouseholdInvite[]
   deleteVotes    HouseholdDeleteVote[]
   notifications  Notification[]
+  wikiSections   WikiSection[]
 }
 
 model HouseholdMember {
@@ -505,4 +509,26 @@ model Notification {
   @@index([householdId])
   @@index([isRead])
   @@index([createdAt])
+}
+
+// ============================================
+// WIKI SECTIONS
+// ============================================
+
+model WikiSection {
+  id          String   @id @default(uuid())
+  slug        String   // e.g. "garbage", "appliances"
+  title       String   // e.g. "Garbage & Recycling"
+  content     String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  updatedById String?
+  updatedBy   User?     @relation("WikiUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([householdId, slug])
+  @@index([householdId])
 }
