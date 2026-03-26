@@ -203,7 +203,7 @@ export default function IssueDetailPanel({
                 className="px-4 py-2 rounded-sm bg-urgent text-white font-medium hover:opacity-95"
                 onClick={() => onDelete?.(issue.id)}
               >
-                Delete Issue
+                Delete
               </button>
             )}
           </div>
