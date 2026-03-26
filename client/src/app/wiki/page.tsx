@@ -5,11 +5,12 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import AppNavbar from '@/components/shared/AppNavbar';
-import { listHouseholdsApi } from '@/lib/households.api';
+import { getHouseholdApi, listHouseholdsApi } from '@/lib/households.api';
 import { listWikiSectionsApi, updateWikiSectionApi } from '@/lib/wiki.api';
 import type { Household } from '@/types/households';
 import type { WikiSection } from '@/types/wiki';
 import { Pencil, X, Save, Loader2 } from 'lucide-react';
+import { get } from 'http';
 
 // Lazy-load the editor so SSR doesn't choke on ProseMirror DOM APIs
 const RichTextEditor = dynamic(() => import('@/components/wiki/RichTextEditor'), {
@@ -60,6 +61,7 @@ function WikiPageContent() {
     const [editing, setEditing] = useState(false);
     const [drafts, setDrafts] = useState<Record<string, string>>({});
     const [saving, setSaving] = useState<Record<string, boolean>>({});
+    const [householdName, setHouseholdName] = useState<string>('');
 
     const sectionSlugs = useMemo(
         () => (sections.length > 0 ? sections.map((s) => s.slug) : DEFAULT_SECTIONS.map((s) => s.slug)),
@@ -85,7 +87,7 @@ function WikiPageContent() {
         };
     }, [householdId]);
 
-    // Fetch wiki sections
+    // Fetch wiki sections and household info when household changes
     useEffect(() => {
         if (!householdId) return;
         let cancelled = false;
@@ -93,7 +95,9 @@ function WikiPageContent() {
             setSectionsLoading(true);
             try {
                 const data = await listWikiSectionsApi(householdId);
+               const name = await getHouseholdApi(householdId).then((res) => res.name);
                 if (!cancelled) setSections(data);
+                if (!cancelled) setHouseholdName(name ?? '');
             } catch {
                 // gracefully handle
             } finally {
@@ -104,6 +108,7 @@ function WikiPageContent() {
             cancelled = true;
         };
     }, [householdId]);
+
 
     // Scroll-spy
     useEffect(() => {
@@ -252,7 +257,7 @@ function WikiPageContent() {
                 <div className="max-w-[1400px] mx-auto px-6 py-10 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
                     <div>
                         <h1 className="text-[32px] font-heading font-bold text-text-primary">
-                            Household Wiki
+                            Household Wiki for {householdName}
                         </h1>
                         <p className="mt-1 text-sm text-text-secondary">
                             Shared knowledge base for your household

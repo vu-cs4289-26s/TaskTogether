@@ -3,6 +3,7 @@ import { authenticate } from '../middleware/auth.js';
 import { requireHouseholdMember, requireAdmin } from '../middleware/authorization.js';
 import { AuthenticatedRequest } from '../types/index.js';
 import prisma from '../lib/prisma.js';
+import { broadcastNotification } from '../lib/notifications.js';
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
@@ -181,7 +182,7 @@ router.put(
 
       const issue = await prisma.issue.findFirst({
         where: { id: issueId, householdId: req.householdId! },
-        select: { id: true, reportedById: true },
+        select: { id: true, reportedById: true, status: true, title: true },
       });
 
       if (!issue) {
@@ -262,6 +263,17 @@ router.put(
           comments: { include: { user: { select: userSelect } } },
         },
       });
+
+      // Broadcast notification if status changed
+      if (data.status && data.status !== issue.status) {
+        broadcastNotification({
+          householdId: req.householdId!,
+          excludeUserIds: [req.userId!],
+          type: 'ISSUE_STATUS_CHANGED',
+          message: `Issue "${updated.title}" status changed to ${data.status}`,
+          payload: { issueId: updated.id, oldStatus: issue.status, newStatus: data.status },
+        }).catch(console.error);
+      }
 
       res.json({ status: 'success', data: updated });
     } catch (err) {

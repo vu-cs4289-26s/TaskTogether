@@ -1185,18 +1185,16 @@ async function handleDeleteEvent(activityToDelete?: Activity) {
                 {viewingTask.completions.map((c) => (
                   <div key={c.id} className="flex flex-col gap-3">
                     <div className="flex items-center gap-2 text-sm text-text-secondary">
+                      <div
+                        className="w-6 h-6 rounded-full text-white text-[10px] flex items-center justify-center"
+                        style={{ backgroundColor: getAvatarColor(c.user?.id ?? c.userId) }}
+                      >
+                        {c.user ? getInitials(c.user.name) : '?'}
+                      </div>
                       {c.user && (
-                        <>
-                          <div
-                            className="w-6 h-6 rounded-full text-white text-[10px] flex items-center justify-center"
-                            style={{ backgroundColor: getAvatarColor(c.user.id) }}
-                          >
-                            {getInitials(c.user.name)}
-                          </div>
-                          <span className="font-medium text-text-primary">
-                            {c.user.id === user?.id ? 'You' : c.user.name}
-                          </span>
-                        </>
+                        <span className="font-medium text-text-primary">
+                          {c.user.id === user?.id ? 'You' : c.user.name}
+                        </span>
                       )}
                       <span>&bull;</span>
                       <span>
