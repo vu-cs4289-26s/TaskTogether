@@ -11,9 +11,12 @@ interface AuthModalProps {
   onClose: () => void;
   onSwitchMode: () => void;
   onLogin: (email: string, password: string) => Promise<void>;
+  onVerifyTwoFactor: (code: string) => Promise<void>;
   onRegister: (name: string, email: string, password: string) => Promise<void>;
+  onForgotPassword: () => void;
   error: string | null;
   loading: boolean;
+  requiresTwoFactor?: boolean;
 }
 
 export default function AuthModal({
@@ -22,13 +25,17 @@ export default function AuthModal({
   onClose,
   onSwitchMode,
   onLogin,
+  onVerifyTwoFactor,
   onRegister,
+  onForgotPassword,
   error,
   loading,
+  requiresTwoFactor = false,
 }: AuthModalProps) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [twoFactorCode, setTwoFactorCode] = useState('');
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
 
@@ -37,23 +44,48 @@ export default function AuthModal({
     setLocalError(null);
   }, [isOpen]);
 
-  const headerTitle = mode === 'login' ? 'Welcome Back' : 'Create Account';
-  const headerSubtitle =
-    mode === 'login'
+  useEffect(() => {
+    if (!requiresTwoFactor) {
+      setTwoFactorCode('');
+    }
+  }, [requiresTwoFactor]);
+
+  const headerTitle = requiresTwoFactor
+    ? 'Two-Factor Authentication'
+    : mode === 'login'
+      ? 'Welcome Back'
+      : 'Create Account';
+
+  const headerSubtitle = requiresTwoFactor
+    ? 'Enter the 6-digit code sent to your email'
+    : mode === 'login'
       ? 'Sign in to manage your households'
       : 'Start organizing your household today';
 
   const passwordStrength = useMemo(() => getPasswordStrength(password), [password]);
 
-  const submitDisabled =
-    loading ||
-    !email.trim() ||
-    !password ||
-    (mode === 'register' && (!name.trim() || !agreedToTerms));
+  const submitDisabled = requiresTwoFactor
+    ? loading || twoFactorCode.trim().length !== 6
+    : loading ||
+      !email.trim() ||
+      !password ||
+      (mode === 'register' && (!name.trim() || !agreedToTerms));
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLocalError(null);
+
+    if (requiresTwoFactor) {
+      const code = twoFactorCode.trim();
+
+      if (code.length !== 6) {
+        setLocalError('Please enter the 6-digit verification code.');
+        return;
+      }
+
+      await onVerifyTwoFactor(code);
+      return;
+    }
 
     const eTrim = email.trim();
 
@@ -74,6 +106,7 @@ export default function AuthModal({
     setName('');
     setEmail('');
     setPassword('');
+    setTwoFactorCode('');
     setAgreedToTerms(false);
     setLocalError(null);
     onSwitchMode();
@@ -82,7 +115,7 @@ export default function AuthModal({
   return (
     <BaseModal
       open={isOpen}
-      ariaLabel={mode === 'login' ? 'Log in' : 'Register'}
+      ariaLabel={requiresTwoFactor ? 'Two-factor authentication' : mode === 'login' ? 'Log in' : 'Register'}
       title={headerTitle}
       subtitle={headerSubtitle}
       isBlocking={loading}
@@ -96,144 +129,168 @@ export default function AuthModal({
       )}
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        {mode === 'register' && (
-          <Field label="Full Name" htmlFor="name" required>
+        {requiresTwoFactor ? (
+          <Field label="Verification Code" htmlFor="twoFactorCode" required>
             <input
-              id="name"
+              id="twoFactorCode"
               type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Jordan Davis"
+              inputMode="numeric"
+              value={twoFactorCode}
+              onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              placeholder="Enter 6-digit code"
               disabled={loading}
               className={inputClass}
-              autoComplete="name"
+              autoComplete="one-time-code"
             />
           </Field>
-        )}
-
-        <Field label="Email" htmlFor="email" required>
-          <input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
-            disabled={loading}
-            className={inputClass}
-            autoComplete="email"
-          />
-        </Field>
-
-        <div className="flex flex-col gap-1">
-          <Field
-            label="Password"
-            htmlFor="password"
-            required
-            hint={mode === 'register' ? 'Must be at least 8 characters' : undefined}
-          >
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder={mode === 'login' ? 'Enter your password' : 'Create a strong password'}
-              disabled={loading}
-              className={inputClass}
-              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-            />
-          </Field>
-
-          {mode === 'login' && (
-            <div className="text-right text-sm">
-              <button
-                type="button"
-                disabled={loading}
-                className="text-sage font-medium hover:underline disabled:opacity-60"
-                onClick={() => {
-                  // wire later
-                }}
-              >
-                Forgot password?
-              </button>
-            </div>
-          )}
-
-          {mode === 'register' && (
-            <>
-              <div className="h-1 rounded bg-divider overflow-hidden mt-1">
-                <div
-                  className={`h-full transition-all duration-300 ${passwordStrength.className}`}
-                  style={{ width: passwordStrength.width }}
+        ) : (
+          <>
+            {mode === 'register' && (
+              <Field label="Full Name" htmlFor="name" required>
+                <input
+                  id="name"
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Jordan Davis"
+                  disabled={loading}
+                  className={inputClass}
+                  autoComplete="name"
                 />
-              </div>
-            </>
-          )}
-        </div>
+              </Field>
+            )}
 
-        {mode === 'register' && (
-          <div className="flex items-start gap-2">
-            <input
-              type="checkbox"
-              id="terms"
-              checked={agreedToTerms}
-              onChange={(e) => setAgreedToTerms(e.target.checked)}
-              disabled={loading}
-              className="mt-0.5 w-5 h-5 cursor-pointer disabled:cursor-not-allowed"
-            />
-            <label htmlFor="terms" className="cursor-pointer font-normal text-sm">
-              I agree to the{' '}
-              <span className="text-sage font-medium">Terms of Service</span> and{' '}
-              <span className="text-sage font-medium">Privacy Policy</span>
-            </label>
-          </div>
+            <Field label="Email" htmlFor="email" required>
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                disabled={loading}
+                className={inputClass}
+                autoComplete="email"
+              />
+            </Field>
+
+            <div className="flex flex-col gap-1">
+              <Field
+                label="Password"
+                htmlFor="password"
+                required
+                hint={mode === 'register' ? 'Must be at least 8 characters' : undefined}
+              >
+                <input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder={mode === 'login' ? 'Enter your password' : 'Create a strong password'}
+                  disabled={loading}
+                  className={inputClass}
+                  autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                />
+              </Field>
+
+              {mode === 'login' && (
+                <div className="text-right text-sm">
+                  <button
+                    type="button"
+                    disabled={loading}
+                    className="text-sage font-medium hover:underline disabled:opacity-60"
+                    onClick={onForgotPassword}
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+              )}
+
+              {mode === 'register' && (
+                <div className="h-1 rounded bg-divider overflow-hidden mt-1">
+                  <div
+                    className={`h-full transition-all duration-300 ${passwordStrength.className}`}
+                    style={{ width: passwordStrength.width }}
+                  />
+                </div>
+              )}
+            </div>
+
+            {mode === 'register' && (
+              <div className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  id="terms"
+                  checked={agreedToTerms}
+                  onChange={(e) => setAgreedToTerms(e.target.checked)}
+                  disabled={loading}
+                  className="mt-0.5 w-5 h-5 cursor-pointer disabled:cursor-not-allowed"
+                />
+                <label htmlFor="terms" className="cursor-pointer font-normal text-sm">
+                  I agree to the{' '}
+                  <span className="text-sage font-medium">Terms of Service</span> and{' '}
+                  <span className="text-sage font-medium">Privacy Policy</span>
+                </label>
+              </div>
+            )}
+          </>
         )}
 
         <Button type="submit" fullWidth lift disabled={submitDisabled}>
-          {loading ? 'Please wait…' : mode === 'login' ? 'Sign In' : 'Create Account'}
+          {loading
+            ? 'Please wait…'
+            : requiresTwoFactor
+              ? 'Verify Code'
+              : mode === 'login'
+                ? 'Sign In'
+                : 'Create Account'}
         </Button>
       </form>
 
-      <div className="flex items-center gap-4 my-6">
-        <div className="flex-1 h-px bg-divider" />
-        <span className="text-text-secondary text-sm">
-          {mode === 'login' ? 'or continue with' : 'or sign up with'}
-        </span>
-        <div className="flex-1 h-px bg-divider" />
-      </div>
+      {!requiresTwoFactor && (
+        <>
+          <div className="flex items-center gap-4 my-6">
+            <div className="flex-1 h-px bg-divider" />
+            <span className="text-text-secondary text-sm">
+              {mode === 'login' ? 'or continue with' : 'or sign up with'}
+            </span>
+            <div className="flex-1 h-px bg-divider" />
+          </div>
 
-      <div className="flex flex-col gap-2">
-        <button
-          type="button"
-          disabled={loading}
-          className="flex items-center justify-center gap-2 px-6 py-3 rounded-sm bg-surface border border-divider text-text-primary font-medium transition-all hover:bg-base disabled:opacity-60"
-        >
-          <GoogleIcon />
-          Continue with Google
-        </button>
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              disabled={loading}
+              className="flex items-center justify-center gap-2 px-6 py-3 rounded-sm bg-surface border border-divider text-text-primary font-medium transition-all hover:bg-base disabled:opacity-60"
+            >
+              <GoogleIcon />
+              Continue with Google
+            </button>
 
-        <button
-          type="button"
-          disabled={loading}
-          className="flex items-center justify-center gap-2 px-6 py-3 rounded-sm bg-surface border border-divider text-text-primary font-medium transition-all hover:bg-base disabled:opacity-60"
-        >
-          <FacebookIcon />
-          Continue with Facebook
-        </button>
-      </div>
+            <button
+              type="button"
+              disabled={loading}
+              className="flex items-center justify-center gap-2 px-6 py-3 rounded-sm bg-surface border border-divider text-text-primary font-medium transition-all hover:bg-base disabled:opacity-60"
+            >
+              <FacebookIcon />
+              Continue with Facebook
+            </button>
+          </div>
 
-      <div className="text-center mt-4">
-        <span className="text-text-secondary">
-          {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
-        </span>
-        <button
-          type="button"
-          onClick={handleSwitchMode}
-          disabled={loading}
-          className="text-sage font-medium hover:underline disabled:opacity-60"
-        >
-          {mode === 'login' ? 'Sign up' : 'Sign in'}
-        </button>
-      </div>
+          <div className="text-center mt-4">
+            <span className="text-text-secondary">
+              {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
+            </span>
+            <button
+              type="button"
+              onClick={handleSwitchMode}
+              disabled={loading}
+              className="text-sage font-medium hover:underline disabled:opacity-60"
+            >
+              {mode === 'login' ? 'Sign up' : 'Sign in'}
+            </button>
+          </div>
+        </>
+      )}
     </BaseModal>
   );
 }

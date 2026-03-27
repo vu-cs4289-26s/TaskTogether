@@ -28,6 +28,7 @@ import ActivityCard from '@/components/calendar/ActivityCard';
 import CreateEventModal, { type EventDetailInput } from '@/components/modals/CreateEventModal';
 import BaseModal from '@/components/modals/BaseModal';
 import Button from '@/components/ui/Button';
+import { Maximize2, Plus } from 'lucide-react';
 
 import {
   listActivitiesApi,
@@ -880,28 +881,26 @@ async function handleDeleteEvent(activityToDelete?: Activity) {
   <div className="flex items-center gap-2">
     {/* New: go to the calendar-only page for this household */}
     <button
-      type="button"
-      onClick={() => router.push(`/households/${id}/calendar`)}
-      className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium transition-all hover:bg-base hover:border-sage"
-    >
-      Full Calendar
-    </button>
+  type="button"
+  onClick={() => router.push(`/households/${id}/calendar`)}
+  className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium flex items-center gap-2 transition-all hover:bg-base hover:border-sage"
+>
+  <Maximize2 className="w-4 h-4" />
+  Full Calendar
+</button>
 
     {/* Existing: Add Event */}
     <button
-      onClick={() => {
-        setIsAddEventOpen(true);
-        setCreateEventError(null);
-      }}
-      className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium flex items-center gap-2 transition-all hover:bg-base hover:border-sage"
-      type="button"
-    >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <line x1="12" y1="5" x2="12" y2="19" />
-        <line x1="5" y1="12" x2="19" y2="12" />
-      </svg>
-      Add Event
-    </button>
+  onClick={() => {
+    setIsAddEventOpen(true);
+    setCreateEventError(null);
+  }}
+  className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium flex items-center gap-2 transition-all hover:bg-base hover:border-sage"
+  type="button"
+>
+  <Plus className="w-4 h-4" />
+  Add Event
+</button>
   </div>
 </div>
 
