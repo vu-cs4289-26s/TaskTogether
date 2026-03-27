@@ -56,6 +56,9 @@ export interface UpdateIssueInput {
   description?: string | null;
   photoUrl?: string | null;
   status?: IssueStatus;
+  type?: IssueType;
+  priority?: IssuePriority;
+  isAnonymous?: boolean;
 }
 
 export interface CreateIssueCommentInput {

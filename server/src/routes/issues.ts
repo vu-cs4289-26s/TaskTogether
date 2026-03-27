@@ -174,153 +174,153 @@ router.get(
 // TODO: Admin can also update status
 // TODO: Validate the issue belongs to this household
 router.put(
-  '/:issueId',
-  requireHouseholdMember,
-  async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-    try {
-      const { issueId } = req.params;
+    '/:issueId',
+    requireHouseholdMember,
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+        try {
+            const { issueId } = req.params;
 
-      const issue = await prisma.issue.findFirst({
-        where: { id: issueId, householdId: req.householdId! },
-        select: { id: true, reportedById: true, status: true, title: true },
-      });
+            const issue = await prisma.issue.findFirst({
+                where: { id: issueId, householdId: req.householdId! },
+                select: { id: true, reportedById: true, status: true, title: true },
+            });
 
-      if (!issue) {
-        res.status(404).json({
-          status: 'error',
-          error: { code: 'NOT_FOUND', message: 'Issue not found' },
-        });
-        return;
-      }
+            if (!issue) {
+                res.status(404).json({
+                    status: 'error',
+                    error: { code: 'NOT_FOUND', message: 'Issue not found' },
+                });
+                return;
+            }
 
-      const isAdmin = req.userRole === 'ADMIN';
-      const isReporter = issue.reportedById === req.userId;
+            const isAdmin = req.userRole === 'ADMIN';
+            const isReporter = issue.reportedById === req.userId;
 
-      // Everyone can view others, but only admin or reporter can edit
-      if (!isAdmin && !isReporter) {
-        res.status(403).json({
-          status: 'error',
-          error: {
-            code: 'FORBIDDEN',
-            message: 'You can only edit your own issues',
-          },
-        });
-        return;
-      }
+            // Everyone can view others, but only admin or reporter can edit
+            if (!isAdmin && !isReporter) {
+                res.status(403).json({
+                    status: 'error',
+                    error: {
+                        code: 'FORBIDDEN',
+                        message: 'You can only edit your own issues',
+                    },
+                });
+                return;
+            }
 
-      const {
-        title,
-        description,
-        photoUrl,
-        type,
-        priority,
-        isAnonymous,
-        status, // admin-only
-      } = req.body;
+            const {
+                title,
+                description,
+                photoUrl,
+                type,
+                priority,
+                isAnonymous,
+                status, // admin-only
+            } = req.body;
 
-      const data: any = {};
+            const data: any = {};
 
-      // Reporter OR Admin: allowed fields
-      if (typeof title === 'string') data.title = title.trim();
-      if (description === null || typeof description === 'string') {
-        const trimmed = typeof description === 'string' ? description.trim() : null;
-        data.description = trimmed ? trimmed : null;
-      }
-      if (photoUrl === null || typeof photoUrl === 'string') data.photoUrl = photoUrl;
-      if (type) data.type = type;
-      if (priority) data.priority = priority;
-      if (typeof isAnonymous === 'boolean') data.isAnonymous = isAnonymous;
+            // Reporter OR Admin: allowed fields
+            if (typeof title === 'string') data.title = title.trim();
+            if (description === null || typeof description === 'string') {
+                const trimmed = typeof description === 'string' ? description.trim() : null;
+                data.description = trimmed ? trimmed : null;
+            }
+            if (photoUrl === null || typeof photoUrl === 'string') data.photoUrl = photoUrl;
+            if (type) data.type = type;
+            if (priority) data.priority = priority;
+            if (typeof isAnonymous === 'boolean') data.isAnonymous = isAnonymous;
 
-      // Admin-only: status
-      if (status !== undefined) {
-        if (!isAdmin) {
-          res.status(403).json({
-            status: 'error',
-            error: {
-              code: 'ADMIN_REQUIRED',
-              message: 'Only admins can change status',
-            },
-          });
-          return;
+            // Admin-only: status
+            if (status !== undefined) {
+                if (!isAdmin) {
+                    res.status(403).json({
+                        status: 'error',
+                        error: {
+                            code: 'ADMIN_REQUIRED',
+                            message: 'Only admins can change status',
+                        },
+                    });
+                    return;
+                }
+                data.status = status;
+            }
+
+            // Validate title if present
+            if ('title' in data && !data.title) {
+                res.status(400).json({
+                    status: 'error',
+                    error: { code: 'VALIDATION_ERROR', message: 'Title cannot be empty' },
+                });
+                return;
+            }
+
+            const updated = await prisma.issue.update({
+                where: { id: issue.id },
+                data,
+                include: {
+                    reportedBy: { select: userSelect },
+                    comments: { include: { user: { select: userSelect } } },
+                },
+            });
+
+            // Broadcast notification if status changed
+            if (data.status && data.status !== issue.status) {
+                broadcastNotification({
+                    householdId: req.householdId!,
+                    excludeUserIds: [req.userId!],
+                    type: 'ISSUE_STATUS_CHANGED',
+                    message: `Issue "${updated.title}" status changed to ${data.status}`,
+                    payload: { issueId: updated.id, oldStatus: issue.status, newStatus: data.status },
+                }).catch(console.error);
+            }
+
+            res.json({ status: 'success', data: updated });
+        } catch (err) {
+            console.error(err);
+            res.status(500).json({
+                status: 'error',
+                error: { code: 'SERVER_ERROR', message: 'Failed to update issue' },
+            });
         }
-        data.status = status;
-      }
-
-      // Validate title if present
-      if ('title' in data && !data.title) {
-        res.status(400).json({
-          status: 'error',
-          error: { code: 'VALIDATION_ERROR', message: 'Title cannot be empty' },
-        });
-        return;
-      }
-
-      const updated = await prisma.issue.update({
-        where: { id: issue.id },
-        data,
-        include: {
-          reportedBy: { select: userSelect },
-          comments: { include: { user: { select: userSelect } } },
-        },
-      });
-
-      // Broadcast notification if status changed
-      if (data.status && data.status !== issue.status) {
-        broadcastNotification({
-          householdId: req.householdId!,
-          excludeUserIds: [req.userId!],
-          type: 'ISSUE_STATUS_CHANGED',
-          message: `Issue "${updated.title}" status changed to ${data.status}`,
-          payload: { issueId: updated.id, oldStatus: issue.status, newStatus: data.status },
-        }).catch(console.error);
-      }
-
-      res.json({ status: 'success', data: updated });
-    } catch (err) {
-      console.error(err);
-      res.status(500).json({
-        status: 'error',
-        error: { code: 'SERVER_ERROR', message: 'Failed to update issue' },
-      });
     }
-  }
 );
 
 // DELETE /:issueId — Delete an issue (admin only)
 router.delete(
-  '/:issueId',
-  requireHouseholdMember,
-  requireAdmin,
-  async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-    try {
-      const { issueId } = req.params;
+    '/:issueId',
+    requireHouseholdMember,
+    requireAdmin,
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+        try {
+            const { issueId } = req.params;
 
-      // Only delete if it belongs to this household
-      const deleted = await prisma.issue.deleteMany({
-        where: {
-          id: issueId,
-          householdId: req.householdId!,
-        },
-      });
+            // Only delete if it belongs to this household
+            const deleted = await prisma.issue.deleteMany({
+                where: {
+                    id: issueId,
+                    householdId: req.householdId!,
+                },
+            });
 
-      if (deleted.count === 0) {
-        res.status(404).json({
-          status: 'error',
-          error: { code: 'NOT_FOUND', message: 'Issue not found' },
-        });
-        return;
-      }
+            if (deleted.count === 0) {
+                res.status(404).json({
+                    status: 'error',
+                    error: { code: 'NOT_FOUND', message: 'Issue not found' },
+                });
+                return;
+            }
 
-      // Cascade will remove IssueComment due to onDelete: Cascade
-      res.status(204).send();
-    } catch (err) {
-      console.error(err);
-      res.status(500).json({
-        status: 'error',
-        error: { code: 'SERVER_ERROR', message: 'Failed to delete issue' },
-      });
+            // Cascade will remove IssueComment due to onDelete: Cascade
+            res.status(204).send();
+        } catch (err) {
+            console.error(err);
+            res.status(500).json({
+                status: 'error',
+                error: { code: 'SERVER_ERROR', message: 'Failed to delete issue' },
+            });
+        }
     }
-  }
 );
 
 // ============================================
@@ -335,11 +335,64 @@ router.post(
     '/:issueId/comments',
     requireHouseholdMember,
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-        // TODO: Implement add comment
-        res.status(501).json({
-            status: 'error',
-            error: { code: 'NOT_IMPLEMENTED', message: 'Add comment not implemented yet' },
-        });
+        try {
+            const { issueId } = req.params;
+            const { content, photoUrl } = req.body as {
+                content?: string;
+                photoUrl?: string | null;
+            };
+
+            const trimmedContent = content?.trim();
+
+            if (!trimmedContent) {
+                res.status(400).json({
+                    status: 'error',
+                    error: { code: 'VALIDATION_ERROR', message: 'Comment content is required' },
+                });
+                return;
+            }
+
+            const issue = await prisma.issue.findFirst({
+                where: {
+                    id: issueId,
+                    householdId: req.householdId!,
+                },
+                select: { id: true },
+            });
+
+            if (!issue) {
+                res.status(404).json({
+                    status: 'error',
+                    error: { code: 'NOT_FOUND', message: 'Issue not found' },
+                });
+                return;
+            }
+
+            const created = await prisma.issueComment.create({
+                data: {
+                    content: trimmedContent,
+                    photoUrl: photoUrl ?? null,
+                    issueId,
+                    userId: req.userId!,
+                },
+                include: {
+                    user: {
+                        select: userSelect,
+                    },
+                },
+            });
+
+            res.status(201).json({
+                status: 'success',
+                data: created,
+            });
+        } catch (err) {
+            console.error(err);
+            res.status(500).json({
+                status: 'error',
+                error: { code: 'SERVER_ERROR', message: 'Failed to create comment' },
+            });
+        }
     }
 );
 
@@ -350,11 +403,46 @@ router.get(
     '/:issueId/comments',
     requireHouseholdMember,
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-        // TODO: Implement list comments
-        res.status(501).json({
-            status: 'error',
-            error: { code: 'NOT_IMPLEMENTED', message: 'List comments not implemented yet' },
-        });
+        try {
+            const { issueId } = req.params;
+
+            const issue = await prisma.issue.findFirst({
+                where: {
+                    id: issueId,
+                    householdId: req.householdId!,
+                },
+                select: { id: true },
+            });
+
+            if (!issue) {
+                res.status(404).json({
+                    status: 'error',
+                    error: { code: 'NOT_FOUND', message: 'Issue not found' },
+                });
+                return;
+            }
+
+            const comments = await prisma.issueComment.findMany({
+                where: { issueId },
+                orderBy: { createdAt: 'asc' },
+                include: {
+                    user: {
+                        select: userSelect,
+                    },
+                },
+            });
+
+            res.json({
+                status: 'success',
+                data: comments,
+            });
+        } catch (err) {
+            console.error(err);
+            res.status(500).json({
+                status: 'error',
+                error: { code: 'SERVER_ERROR', message: 'Failed to load comments' },
+            });
+        }
     }
 );
 

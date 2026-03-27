@@ -24,23 +24,10 @@ type Props = {
     isSubmitting: boolean;
     error: string | null;
     onClose: () => void;
-    onSubmit: (input: ReportIssueFormValues) => void | Promise<void>;
+    onSubmit: (input: ReportIssueFormValues, imageFile?: File | null) => void | Promise<void>;
 };
 
-type Preview = { id: string; url: string; file: File };
-
-function uid() {
-    return Math.random().toString(36).slice(2, 10);
-}
-
-function readAsDataURL(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-        const r = new FileReader();
-        r.onload = () => resolve(String(r.result));
-        r.onerror = () => reject(new Error('Failed to read file.'));
-        r.readAsDataURL(file);
-    });
-}
+type Preview = { url: string; file: File };
 
 export default function ReportIssueModal({
     open,
@@ -71,91 +58,97 @@ export default function ReportIssueModal({
 
     const [localError, setLocalError] = useState<string | null>(null);
 
-    // Upload state
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const [isDragOver, setIsDragOver] = useState(false);
-    const [previews, setPreviews] = useState<Preview[]>([]);
-    const [photoUrl, setPhotoUrl] = useState<string | null>(defaults.photoUrl);
+    const [preview, setPreview] = useState<Preview | null>(null);
 
     useEffect(() => {
         if (!open) return;
 
-        setTitle(defaults.title);
-        setType(defaults.type);
-        setPriority(defaults.priority);
-        setDescription(defaults.description);
-        setAnonymous(defaults.anonymous);
+        if (mode === 'edit' && initialValue) {
+            setTitle(initialValue.title ?? '');
+            setType(initialValue.type ?? 'maintenance');
+            setPriority(initialValue.priority ?? 'medium');
+            setDescription(initialValue.description ?? '');
+            setAnonymous(initialValue.anonymous ?? false);
+        } else {
+            setTitle('');
+            setType('maintenance');
+            setPriority('medium');
+            setDescription('');
+            setAnonymous(false);
+        }
+
+        setLocalError(null);
+        setIsDragOver(false);
+
+        setPreview((prev) => {
+            if (prev) URL.revokeObjectURL(prev.url);
+            return null;
+        });
+    }, [open, mode, initialValue]);
+
+    useEffect(() => {
+        return () => {
+            if (preview) URL.revokeObjectURL(preview.url);
+        };
+    }, [preview]);
+
+    function validateFile(file: File) {
+        if (!file.type.startsWith('image/')) {
+            return 'Only image files are allowed.';
+        }
+        if (file.size > 10 * 1024 * 1024) {
+            return 'Image must be 10MB or smaller.';
+        }
+        return null;
+    }
+
+    function setSelectedFile(file: File) {
+        const error = validateFile(file);
+        if (error) {
+            setLocalError(error);
+            return;
+        }
+
         setLocalError(null);
 
-        // reset uploads on open (match your modal reset behavior)
-        setPreviews([]);
-        setPhotoUrl(defaults.photoUrl ?? null);
-        setIsDragOver(false);
-    }, [open, defaults]);
-
-    function validateFiles(files: File[]) {
-        const ok: File[] = [];
-        for (const f of files) {
-            if (!f.type.startsWith('image/')) continue;
-            // 10MB each, like your mock
-            if (f.size > 10 * 1024 * 1024) continue;
-            ok.push(f);
-        }
-        return ok;
+        setPreview((prev) => {
+            if (prev) URL.revokeObjectURL(prev.url);
+            return {
+                file,
+                url: URL.createObjectURL(file),
+            };
+        });
     }
 
-    async function addFiles(filesLike: FileList | File[]) {
-        const files = validateFiles(Array.from(filesLike));
-        if (files.length === 0) return;
-
-        const next: Preview[] = [];
-        for (const file of files) {
-            const url = URL.createObjectURL(file);
-            next.push({ id: uid(), url, file });
-        }
-
-        setPreviews((prev) => [...prev, ...next]);
-
-        // For now, store FIRST image as photoUrl (data URL) so backend gets something
-        // If you prefer NOT to send image data yet, setPhotoUrl(null) and ignore.
-        try {
-            const first = files[0];
-            const dataUrl = await readAsDataURL(first);
-            setPhotoUrl(dataUrl);
-        } catch {
-            // ignore; user still sees previews
-            setPhotoUrl(null);
-        }
-    }
-
-    function removePreview(id: string) {
-        setPreviews((prev) => {
-            const found = prev.find((p) => p.id === id);
-            if (found) URL.revokeObjectURL(found.url);
-            const next = prev.filter((p) => p.id !== id);
-
-            // if removing all, clear photoUrl too
-            if (next.length === 0) setPhotoUrl(null);
-
-            return next;
+    function removePreview() {
+        setPreview((prev) => {
+            if (prev) URL.revokeObjectURL(prev.url);
+            return null;
         });
     }
 
     async function submit() {
         const trimmedTitle = title.trim();
-        if (!trimmedTitle) return setLocalError('Issue title is required.');
+        if (!trimmedTitle) {
+            setLocalError('Issue title is required.');
+            return;
+        }
 
-        // Description is optional now: no requirement check
         setLocalError(null);
 
-        await onSubmit({
-            title: trimmedTitle,
-            type,
-            priority,
-            description: description.trim() ? description.trim() : undefined,
-            anonymous,
-            photoUrl, // data URL (demo) or null
-        });
+        await onSubmit(
+            {
+                title: trimmedTitle,
+                type,
+                priority,
+                description: description.trim() ? description.trim() : undefined,
+                anonymous,
+                photoUrl: null,
+            },
+            preview?.file ?? null
+        );
     }
 
     return (
@@ -264,27 +257,32 @@ export default function ReportIssueModal({
                             e.preventDefault();
                             if (isSubmitting) return;
                             setIsDragOver(false);
-                            void addFiles(e.dataTransfer.files);
+                            const file = e.dataTransfer.files?.[0];
+                            if (file) setSelectedFile(file);
                         }}
                     >
                         <input
                             ref={fileInputRef}
                             type="file"
                             accept="image/*"
-                            multiple
                             className="hidden"
                             onChange={(e) => {
-                                if (!e.target.files) return;
-                                void addFiles(e.target.files);
-                                // allow selecting same file again
-                                e.target.value = '';
+                                const file = e.target.files?.[0];
+                                if (file) setSelectedFile(file);
+                                e.currentTarget.value = '';
                             }}
                             disabled={isSubmitting}
                         />
 
                         <div className="mx-auto mb-2 w-9 h-9 text-sage">
-                            {/* simple image icon */}
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                            <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            >
                                 <rect x="3" y="3" width="18" height="18" rx="2" />
                                 <circle cx="8.5" cy="8.5" r="1.5" />
                                 <polyline points="21 15 16 10 5 21" />
@@ -295,30 +293,24 @@ export default function ReportIssueModal({
                             Click to upload or drag &amp; drop
                         </div>
                         <div className="text-xs text-text-secondary mt-1">
-                            PNG, JPG, HEIC up to 10MB each
+                            PNG, JPG, HEIC up to 10MB
                         </div>
                     </div>
 
-                    {previews.length > 0 && (
+                    {preview && (
                         <div className="flex flex-wrap gap-2">
-                            {previews.map((p) => (
-                                <div
-                                    key={p.id}
-                                    className="relative w-[72px] h-[72px] rounded-sm overflow-hidden border border-divider bg-surface"
+                            <div className="relative w-[72px] h-[72px] rounded-sm overflow-hidden border border-divider bg-surface">
+                                <img src={preview.url} alt="preview" className="w-full h-full object-cover" />
+                                <button
+                                    type="button"
+                                    onClick={removePreview}
+                                    className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 text-white text-[11px] flex items-center justify-center hover:bg-urgent"
+                                    aria-label="Remove photo"
+                                    disabled={isSubmitting}
                                 >
-                                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                                    <img src={p.url} alt="preview" className="w-full h-full object-cover" />
-                                    <button
-                                        type="button"
-                                        onClick={() => removePreview(p.id)}
-                                        className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 text-white text-[11px] flex items-center justify-center hover:bg-urgent"
-                                        aria-label="Remove photo"
-                                        disabled={isSubmitting}
-                                    >
-                                        ✕
-                                    </button>
-                                </div>
-                            ))}
+                                    ✕
+                                </button>
+                            </div>
                         </div>
                     )}
                 </div>

@@ -1,6 +1,7 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
+
 
 type Props = {
     open: boolean;
@@ -25,6 +26,28 @@ export default function BaseModal({
     onClose,
     children,
 }: Props) {
+
+    //added to freeze background. 
+    useEffect(() => {
+    if (!open) {
+        document.body.style.overflow = '';
+        document.body.style.paddingRight = '';
+        return;
+    }
+
+    const scrollBarWidth =
+        window.innerWidth - document.documentElement.clientWidth;
+
+    document.body.style.overflow = 'hidden';
+    document.body.style.paddingRight = `${scrollBarWidth}px`;
+
+    return () => {
+        document.body.style.overflow = '';
+        document.body.style.paddingRight = '';
+    };
+}, [open]);
+//new code ends here
+
     if (!open) return null;
 
     return (

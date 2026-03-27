@@ -68,6 +68,7 @@ export default function IssueDetailPanel({
     );
   }, [issue.comments]);
 
+
   return (
     <div className="flex flex-col gap-4">
       {/* Description card */}
@@ -142,7 +143,7 @@ export default function IssueDetailPanel({
       </div>
 
       {/* Admin status + actions */}
-      {(isAdmin || canEdit) && (
+      {canEdit && (
         <div className="flex flex-col gap-3">
           {isAdmin && (
             <div className="bg-base rounded-md border border-divider p-4">
@@ -196,13 +197,13 @@ export default function IssueDetailPanel({
               </button>
             )}
 
-            {isAdmin && (
+            { isAdmin && (
               <button
                 type="button"
                 className="px-4 py-2 rounded-sm bg-urgent text-white font-medium hover:opacity-95"
                 onClick={() => onDelete?.(issue.id)}
               >
-                Delete Issue
+                Delete
               </button>
             )}
           </div>
