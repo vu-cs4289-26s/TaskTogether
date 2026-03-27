@@ -4,5 +4,8 @@ export type User = {
   email: string;
   username?: string;
   phone?: string;
+  avatar?: string | null;
   createdAt?: string;
+  passwordUpdatedAt?: string | null;
+  twoFactorEnabled?: boolean;
 };

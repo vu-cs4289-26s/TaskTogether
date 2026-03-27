@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import AppNavbar from '@/components/shared/AppNavbar';
 import { useAuth } from '@/contexts/AuthContext';
-import { Pencil, Plus } from 'lucide-react';
+import { Pencil, Plus, Maximize2 } from 'lucide-react';
 
 import CalendarGrid from '@/components/calendar/CalendarGrid';
 import ActivityCard from '@/components/calendar/ActivityCard';
@@ -600,13 +600,14 @@ export default function ProfilePage() {
             <h2 className="text-xl font-semibold text-sage">My Calendar</h2>
             <div className="flex items-center gap-2">
               <button
-                className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium transition-all hover:bg-base hover:border-sage"
-                type="button"
-                onClick={() => router.push('/profile/calendar')}
-                disabled={loading || !!error}
-              >
-                Full Calendar
-              </button>
+  className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium flex items-center gap-2 transition-all hover:bg-base hover:border-sage"
+  type="button"
+  onClick={() => router.push('/profile/calendar')}
+  disabled={loading || !!error}
+>
+  <Maximize2 className="w-4 h-4" />
+  Full Calendar
+</button>
 
               <button
                 className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium flex items-center gap-2 transition-all hover:bg-base hover:border-sage"

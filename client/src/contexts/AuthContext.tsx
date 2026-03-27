@@ -8,10 +8,15 @@ import { loginMock, registerMock, clearMockLogin } from '@/lib/mockAuth';
 
 const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === 'true';
 
+type LoginResult =
+    | { requires2FA: false }
+    | { requires2FA: true; userId: string };
+
 interface AuthContextType {
     user: User | null;
     loading: boolean;
-    login: (email: string, password: string) => Promise<void>;
+    login: (email: string, password: string) => Promise<LoginResult>;
+    verifyTwoFactorLogin: (userId: string, code: string) => Promise<void>;
     register: (name: string, email: string, password: string) => Promise<void>;
     logout: () => void;
 }
@@ -39,6 +44,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 }
                 return;
             }
+
             const token = localStorage.getItem('token');
             if (token) {
                 api
@@ -61,15 +67,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
     }, []);
 
-    const login = useCallback(async (email: string, password: string) => {
+    const login = useCallback(async (email: string, password: string): Promise<LoginResult> => {
         if (USE_MOCK) {
             await loginMock(email, password);
             const u = await getCurrentUser();
             setUser(u);
-            return;
+            return { requires2FA: false };
         }
 
         const res = await api.post('/auth/login', { email, password });
+
+        if (res.data?.data?.requires2FA) {
+            return {
+                requires2FA: true,
+                userId: res.data.data.userId,
+            };
+        }
+
+        localStorage.setItem('token', res.data.data.token);
+        setUser(res.data.data.user);
+
+        return { requires2FA: false };
+    }, []);
+
+    const verifyTwoFactorLogin = useCallback(async (userId: string, code: string) => {
+        const res = await api.post('/auth/2fa/verify-login', { userId, code });
         localStorage.setItem('token', res.data.data.token);
         setUser(res.data.data.user);
     }, []);
@@ -99,7 +121,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, []);
 
     return (
-        <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+        <AuthContext.Provider
+            value={{ user, loading, login, verifyTwoFactorLogin, register, logout }}
+        >
             {children}
         </AuthContext.Provider>
     );
