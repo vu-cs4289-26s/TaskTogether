@@ -745,6 +745,16 @@ export default function HouseholdDashboardPage() {
         <div className="bg-surface rounded-md p-6 shadow-sm border border-divider">
           <div className="flex justify-between items-center mb-6 pb-4 border-b border-divider">
             <h2 className="text-xl font-semibold text-sage">Tasks</h2>
+            <div
+             className="flex items-center gap-2"
+            >
+            <button
+              type = "button"
+              onClick={() => router.push(`/households/${id}/tasks`)}
+              className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium transition-all hover:bg-base hover:border-sage"
+            >
+              Taskboard
+            </button>
             <button
               onClick={() => setIsAddTaskOpen(true)}
               className="px-5 py-2.5 rounded-sm bg-sage text-white font-medium flex items-center gap-2 transition-all hover:bg-sage-hover hover:-translate-y-px"
@@ -765,6 +775,7 @@ export default function HouseholdDashboardPage() {
               </svg>
               Add Chore
             </button>
+            </div>
           </div>
 
           <div className="flex gap-2 mb-4">
