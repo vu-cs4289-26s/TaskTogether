@@ -14,9 +14,12 @@ import {
 import type { Household } from "@/types/households";
 import { getInitials, getAvatarColor } from "@/types/households";
 import type { Task, CreateTaskInput, UpdateTaskInput } from "@/types/tasks";
+import { isTaskCompleted } from "@/lib/task-helpers";
 import AddTaskModal from "@/components/households/AddTaskModal";
 import ManageMembersModal from "@/components/households/ManageMembersModal";
 import CompleteTaskModal from "@/components/modals/CompleteTaskModal";
+import TaskListPanel from "@/components/tasks/TaskListPanel";
+import TaskCompletionDetailsModal from "@/components/tasks/TaskCompletionDetailsModal";
 import { useAuth } from "@/contexts/AuthContext";
 
 // report issue feature
@@ -31,7 +34,6 @@ import CreateEventModal, {
 import BaseModal from "@/components/modals/BaseModal";
 import Button from "@/components/ui/Button";
 import { Maximize2, Plus } from "lucide-react";
-import { priorityStyles, priorityLabels, formatDueDate, isTaskCompleted } from "@/lib/task-helpers";
 
 import {
   listActivitiesApi,
@@ -216,8 +218,6 @@ export default function HouseholdDashboardPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tasksLoading, setTasksLoading] = useState(true);
 
-  const [activeTab, setActiveTab] = useState("all");
-
   // Add task modal state
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
   const [isCreatingTask, setIsCreatingTask] = useState(false);
@@ -385,13 +385,8 @@ export default function HouseholdDashboardPage() {
   const name = household?.name?.trim() || "Untitled household";
   const isAdmin = household?.myRole === "ADMIN";
 
-  const filteredTasks = useMemo(() => {
-    if (activeTab === "pending")
-      return tasks.filter((t) => !isTaskCompleted(t));
-    if (activeTab === "completed")
-      return tasks.filter((t) => isTaskCompleted(t));
-    return tasks;
-  }, [tasks, activeTab]);
+  const activeTasks = useMemo(() => tasks.filter((t) => !isTaskCompleted(t)), [tasks]);
+  const completedTasks = useMemo(() => tasks.filter((t) => isTaskCompleted(t)), [tasks]);
 
   /** --------------------- task handlers --------------------- */
   async function handleCreateTask(input: CreateTaskInput) {
@@ -719,233 +714,41 @@ export default function HouseholdDashboardPage() {
 
       <div className="max-w-[1400px] mx-auto p-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Tasks */}
-        <div className="bg-surface rounded-md p-6 shadow-sm border border-divider">
-          <div className="flex justify-between items-center mb-6 pb-4 border-b border-divider">
-            <h2 className="text-xl font-semibold text-sage">Tasks</h2>
-            <div
-             className="flex items-center gap-2"
-            >
-            <button
-              type = "button"
-              onClick={() => router.push(`/households/${id}/tasks`)}
-              className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium transition-all hover:bg-base hover:border-sage"
-            >
-              Taskboard
-            </button>
-            <button
-              onClick={() => setIsAddTaskOpen(true)}
-              className="px-5 py-2.5 rounded-sm bg-sage text-white font-medium flex items-center gap-2 transition-all hover:bg-sage-hover hover:-translate-y-px"
-              type="button"
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-              Add Chore
-            </button>
-            </div>
-          </div>
-
-          <div className="flex gap-2 mb-4">
-            {["all", "pending", "completed"].map((tab) => (
+        <TaskListPanel
+          title="Tasks"
+          tasks={tasks}
+          loading={tasksLoading}
+          currentUserId={user?.id}
+          onComplete={(task) => setCompletingTask(task)}
+          onEdit={(task) => setEditingTask(task)}
+          onViewCompleted={(task) => setViewingTask(task)}
+          canEdit={(task) => task.creatorId === user?.id || isAdmin}
+          emptyMessage="No tasks yet. Add one to get started!"
+          tabCounts={{
+            all: tasks.length,
+            pending: activeTasks.length,
+            completed: completedTasks.length,
+          }}
+          headerActions={
+            <>
               <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-4 py-2 rounded-sm text-sm font-medium transition-all capitalize ${
-                  activeTab === tab
-                    ? "bg-soft-highlight text-text-primary"
-                    : "text-text-secondary hover:bg-base"
-                }`}
+                type="button"
+                onClick={() => router.push(`/households/${id}/tasks`)}
+                className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium transition-all hover:bg-base hover:border-sage"
+              >
+                Taskboard
+              </button>
+              <button
+                onClick={() => setIsAddTaskOpen(true)}
+                className="px-5 py-2.5 rounded-sm bg-sage text-white font-medium flex items-center gap-2 transition-all hover:bg-sage-hover hover:-translate-y-px"
                 type="button"
               >
-                {tab}
+                <Plus className="w-4 h-4" />
+                Add Chore
               </button>
-            ))}
-          </div>
-
-          {tasksLoading ? (
-            <div className="text-text-secondary text-sm py-4">
-              Loading tasks...
-            </div>
-          ) : filteredTasks.length === 0 ? (
-            <div className="text-text-secondary text-sm py-4">
-              {activeTab === "all"
-                ? "No tasks yet. Add one to get started!"
-                : `No ${activeTab} tasks.`}
-            </div>
-          ) : (
-            <div className="flex flex-col gap-4">
-              {filteredTasks.map((task) => {
-                const done = isTaskCompleted(task);
-                const assignee = task.assignments[0]?.user;
-                const priority = task.priority || "medium";
-
-                const completion = task.completions[0];
-
-                return (
-                  <div
-                    key={task.id}
-                    className={`flex items-start gap-4 p-4 rounded-sm border border-divider transition-all hover:border-sage hover:shadow-sm ${
-                      done ? "cursor-pointer" : ""
-                    }`}
-                    onClick={() => {
-                      if (done) setViewingTask(task);
-                    }}
-                  >
-                    <div
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (!done) setCompletingTask(task);
-                      }}
-                      className={`w-6 h-6 rounded flex-shrink-0 mt-0.5 border-2 transition-all flex items-center justify-center ${
-                        done
-                          ? "bg-success border-success text-white cursor-default"
-                          : "border-divider hover:border-sage cursor-pointer"
-                      }`}
-                    >
-                      {done && (
-                        <span className="text-base leading-none">&#10003;</span>
-                      )}
-                    </div>
-
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span
-                          className={`font-semibold flex-1 ${done ? "line-through text-text-secondary" : ""}`}
-                        >
-                          {task.title}
-                        </span>
-
-                        <span
-                          className={`px-2 py-0.5 rounded text-[11px] font-semibold uppercase ${priorityStyles[priority]}`}
-                        >
-                          {priorityLabels[priority]}
-                        </span>
-
-                        {!done && (task.creatorId === user?.id || isAdmin) && (
-                          <div className="flex gap-1 ml-1">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setEditingTask(task);
-                              }}
-                              className="p-1.5 rounded text-text-secondary hover:text-sage hover:bg-sage/10 transition"
-                              title="Edit task"
-                            >
-                              <svg
-                                width="14"
-                                height="14"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                              </svg>
-                            </button>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-4 text-[13px] text-text-secondary flex-wrap">
-                        <div className="flex items-center gap-1">
-                          {assignee ? (
-                            <>
-                              <div
-                                className="w-5 h-5 rounded-full text-white text-[10px] flex items-center justify-center"
-                                style={{
-                                  backgroundColor: getAvatarColor(assignee.id),
-                                }}
-                              >
-                                {getInitials(assignee.name)}
-                              </div>
-                              <span>
-                                {assignee.id === user?.id
-                                  ? "You"
-                                  : assignee.name}
-                              </span>
-                            </>
-                          ) : (
-                            <span className="text-text-secondary italic">
-                              Unassigned
-                            </span>
-                          )}
-                        </div>
-
-                        <span>&bull;</span>
-                        <span>
-                          {done
-                            ? `Completed ${
-                                completion?.completedAt
-                                  ? new Date(
-                                      completion.completedAt,
-                                    ).toLocaleDateString("en-US", {
-                                      month: "short",
-                                      day: "numeric",
-                                    })
-                                  : ""
-                              }`
-                            : `Due: ${formatDueDate(task.dueDate)}`}
-                        </span>
-
-                        {task.isRecurring && task.recurrencePattern && (
-                          <>
-                            <span>&bull;</span>
-                            <span className="capitalize">
-                              {task.recurrencePattern}
-                            </span>
-                          </>
-                        )}
-
-                        {done && completion?.photoUrl && (
-                          <>
-                            <span>&bull;</span>
-                            <span className="flex items-center gap-1 text-sage">
-                              <svg
-                                width="14"
-                                height="14"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <rect
-                                  x="3"
-                                  y="3"
-                                  width="18"
-                                  height="18"
-                                  rx="2"
-                                />
-                                <circle cx="8.5" cy="8.5" r="1.5" />
-                                <polyline points="21 15 16 10 5 21" />
-                              </svg>
-                              Photo
-                            </span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+            </>
+          }
+        />
 
         {/* Calendar */}
         <div className="bg-surface rounded-md p-6 shadow-sm border border-divider">
@@ -1229,138 +1032,11 @@ export default function HouseholdDashboardPage() {
       </BaseModal>
 
       {/* Completed Task Details Modal */}
-      <BaseModal
-        open={!!viewingTask}
-        ariaLabel="Completed task details"
-        title={viewingTask?.title ?? "Task Details"}
-        subtitle={
-          viewingTask
-            ? viewingTask.completions[0]?.completedAt
-              ? `Completed ${new Date(
-                  viewingTask.completions[0].completedAt,
-                ).toLocaleDateString("en-US", {
-                  month: "long",
-                  day: "numeric",
-                  year: "numeric",
-                  hour: "numeric",
-                  minute: "2-digit",
-                })}`
-              : "Completed"
-            : undefined
-        }
+      <TaskCompletionDetailsModal
+        task={viewingTask}
+        currentUserId={user?.id}
         onClose={() => setViewingTask(null)}
-        maxWidthClassName="max-w-[520px]"
-      >
-        {viewingTask && (
-          <div className="flex flex-col gap-4">
-            {viewingTask.description && (
-              <div>
-                <div className="text-xs font-semibold text-text-secondary uppercase tracking-wide mb-1">
-                  Description
-                </div>
-                <div className="text-sm text-text-primary whitespace-pre-wrap">
-                  {viewingTask.description}
-                </div>
-              </div>
-            )}
-
-            <div className="flex flex-wrap gap-3 text-sm">
-              <span
-                className={`px-2 py-0.5 rounded text-[11px] font-semibold uppercase ${priorityStyles[viewingTask.priority || "medium"]}`}
-              >
-                {priorityLabels[viewingTask.priority || "medium"]}
-              </span>
-
-              {viewingTask.dueDate && (
-                <span className="text-text-secondary">
-                  Due: {formatDueDate(viewingTask.dueDate)}
-                </span>
-              )}
-
-              {viewingTask.isRecurring && viewingTask.recurrencePattern && (
-                <span className="text-text-secondary capitalize">
-                  {viewingTask.recurrencePattern}
-                </span>
-              )}
-            </div>
-
-            {viewingTask.completions.length > 0 && (
-              <div className="border-t border-divider pt-4">
-                <div className="text-xs font-semibold text-text-secondary uppercase tracking-wide mb-2">
-                  Completion Details
-                </div>
-
-                {viewingTask.completions.map((c) => (
-                  <div key={c.id} className="flex flex-col gap-3">
-                    <div className="flex items-center gap-2 text-sm text-text-secondary">
-                      <div
-                        className="w-6 h-6 rounded-full text-white text-[10px] flex items-center justify-center"
-                        style={{
-                          backgroundColor: getAvatarColor(
-                            c.user?.id ?? c.userId,
-                          ),
-                        }}
-                      >
-                        {c.user ? getInitials(c.user.name) : "?"}
-                      </div>
-                      {c.user && (
-                        <span className="font-medium text-text-primary">
-                          {c.user.id === user?.id ? "You" : c.user.name}
-                        </span>
-                      )}
-                      <span>&bull;</span>
-                      <span>
-                        {new Date(c.completedAt).toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                          year: "numeric",
-                          hour: "numeric",
-                          minute: "2-digit",
-                        })}
-                      </span>
-                    </div>
-
-                    {c.notes && (
-                      <div>
-                        <div className="text-xs font-medium text-text-secondary mb-1">
-                          Notes
-                        </div>
-                        <div className="text-sm text-text-primary bg-base rounded-sm p-3 whitespace-pre-wrap">
-                          {c.notes}
-                        </div>
-                      </div>
-                    )}
-
-                    {c.photoUrl && (
-                      <div>
-                        <div className="text-xs font-medium text-text-secondary mb-1">
-                          Photo
-                        </div>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={c.photoUrl}
-                          alt="Completion photo"
-                          className="rounded-sm border border-divider max-h-[300px] object-contain w-full bg-base"
-                        />
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="flex justify-end mt-2">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setViewingTask(null)}
-              >
-                Close
-              </Button>
-            </div>
-          </div>
-        )}
-      </BaseModal>
+      />
     </div>
   );
 }

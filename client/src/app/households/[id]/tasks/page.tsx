@@ -15,7 +15,7 @@ import {
 import type { Household, HouseholdMember } from '@/types/households';
 import { getInitials, getAvatarColor } from '@/types/households';
 import type { Task } from '@/types/tasks';
-import { priorityStyles, priorityLabels, formatDueDate, isTaskCompleted } from '@/lib/task-helpers';
+import { priorityStyles, priorityLabels, formatDueDate, isTaskCompleted, compareTasksByUrgency } from '@/lib/task-helpers';
 import TaskDetailModal, { type TaskDetailInput } from '@/components/modals/CreateTaskModal';
 import CompleteTaskModal from '@/components/modals/CompleteTaskModal';
 import { CheckCircle2, Pencil, Plus, Calendar, RotateCw, AlertCircle } from 'lucide-react';
@@ -139,6 +139,8 @@ function TaskCard({
 /*  TaskLane – one swimlane per person                                 */
 /* ================================================================== */
 
+const MAX_COMPLETED_VISIBLE = 3;
+
 function TaskLane({
   memberId,
   memberName,
@@ -156,8 +158,15 @@ function TaskLane({
   onCompleteTask: (task: Task) => void;
   onEditTask: (task: Task) => void;
 }) {
-  const pending = tasks.filter((t) => !isTaskCompleted(t));
-  const completed = tasks.filter((t) => isTaskCompleted(t));
+  const [showAllCompleted, setShowAllCompleted] = useState(false);
+
+  const sorted = useMemo(() => [...tasks].sort(compareTasksByUrgency), [tasks]);
+  const pending = sorted.filter((t) => !isTaskCompleted(t));
+  const allCompleted = sorted.filter((t) => isTaskCompleted(t));
+  const completed = showAllCompleted
+    ? allCompleted
+    : allCompleted.slice(0, MAX_COMPLETED_VISIBLE);
+  const hiddenCount = allCompleted.length - MAX_COMPLETED_VISIBLE;
 
   return (
     <div
@@ -195,6 +204,17 @@ function TaskLane({
             onEdit={() => onEditTask(task)}
           />
         ))}
+
+        {/* Completed section */}
+        {allCompleted.length > 0 && pending.length > 0 && (
+          <div className="flex items-center gap-2 pt-1 pb-0.5">
+            <div className="flex-1 border-t border-divider/60" />
+            <span className="text-[10px] text-text-secondary uppercase tracking-wider font-medium">
+              Done ({allCompleted.length})
+            </span>
+            <div className="flex-1 border-t border-divider/60" />
+          </div>
+        )}
         {completed.map((task) => (
           <TaskCard
             key={task.id}
@@ -204,6 +224,19 @@ function TaskLane({
             onEdit={() => onEditTask(task)}
           />
         ))}
+
+        {/* Show more / less toggle */}
+        {hiddenCount > 0 && (
+          <button
+            onClick={() => setShowAllCompleted((v) => !v)}
+            className="w-full text-center text-[11px] text-text-secondary hover:text-sage font-medium py-1.5 transition"
+          >
+            {showAllCompleted
+              ? 'Show less'
+              : `Show ${hiddenCount} more completed`}
+          </button>
+        )}
+
         {tasks.length === 0 && (
           <div className="text-center py-8 text-sm text-text-secondary">
             No tasks yet

@@ -15,11 +15,15 @@ import BaseModal from '@/components/modals/BaseModal';
 import Button from '@/components/ui/Button';
 
 import { listHouseholdsApi } from '@/lib/households.api';
-import { listTasksApi } from '@/lib/tasks.api';
+import { listTasksApi, completeTaskApi, updateTaskApi, deleteTaskApi } from '@/lib/tasks.api';
 import type { Household } from '@/types/households';
-import type { Task } from '@/types/tasks';
-import { getInitials, getAvatarColor } from '@/types/households';
-import { formatDueDate, isTaskCompleted, priorityLabels, priorityStyles } from '@/lib/task-helpers';
+import type { Task, UpdateTaskInput } from '@/types/tasks';
+import { getAvatarColor } from '@/types/households';
+import { isTaskCompleted } from '@/lib/task-helpers';
+import TaskListPanel from '@/components/tasks/TaskListPanel';
+import TaskCompletionDetailsModal from '@/components/tasks/TaskCompletionDetailsModal';
+import CompleteTaskModal from '@/components/modals/CompleteTaskModal';
+import AddTaskModal from '@/components/households/AddTaskModal';
 
 function pad2(n: number) {
   return String(n).padStart(2, '0');
@@ -139,10 +143,19 @@ export default function ProfilePage() {
   const [households, setHouseholds] = useState<Household[]>([]);
   const [allTasks, setAllTasks] = useState<Task[]>([]);
   const [tasksLoading, setTasksLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('all');
 
   // completed task details modal
   const [viewingTask, setViewingTask] = useState<Task | null>(null);
+
+  // Complete task modal state
+  const [completingTask, setCompletingTask] = useState<Task | null>(null);
+  const [isCompleting, setIsCompleting] = useState(false);
+  const [completeError, setCompleteError] = useState<string | null>(null);
+
+  // Edit task modal state
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [isEditingTask, setIsEditingTask] = useState(false);
+  const [editTaskError, setEditTaskError] = useState<string | null>(null);
 
   // ---- fetch households + tasks ----
   const fetchAllTasks = useCallback(async () => {
@@ -156,7 +169,6 @@ export default function ProfilePage() {
         hsList.map((h) => listTasksApi(h.id, { limit: 50, assignedToMe: true }))
       );
 
-      // Flatten tasks from all households, attach household name for display
       const combined: Task[] = [];
       taskResults.forEach((r) => {
         combined.push(...r.tasks);
@@ -177,18 +189,65 @@ export default function ProfilePage() {
   }, [loading, user, fetchAllTasks]);
 
   // ---- derived task data ----
-  const filteredTasks = useMemo(() => {
-    if (activeTab === 'pending') return allTasks.filter((t) => !isTaskCompleted(t));
-    if (activeTab === 'completed') return allTasks.filter((t) => isTaskCompleted(t));
-    return allTasks;
-  }, [allTasks, activeTab]);
-
   const activeTasks = useMemo(() => allTasks.filter((t) => !isTaskCompleted(t)), [allTasks]);
   const completedTasks = useMemo(() => allTasks.filter((t) => isTaskCompleted(t)), [allTasks]);
 
   // Helper: find household name for a task
   function getHouseholdName(householdId: string): string {
     return households.find((h) => h.id === householdId)?.name ?? 'Unknown';
+  }
+
+  // Helper: find household members for the editing task
+  function getMembersForTask(task: Task | null) {
+    if (!task) return [];
+    const hh = households.find((h) => h.id === task.householdId);
+    return hh?.members ?? [];
+  }
+
+  // ---- task action handlers ----
+  async function handleCompleteTask(input: { notes?: string; photoUrl?: string }) {
+    if (!completingTask) return;
+    try {
+      setIsCompleting(true);
+      setCompleteError(null);
+      await completeTaskApi(completingTask.householdId, completingTask.id, input);
+      setCompletingTask(null);
+      await fetchAllTasks();
+    } catch {
+      setCompleteError('Failed to complete task. Please try again.');
+    } finally {
+      setIsCompleting(false);
+    }
+  }
+
+  async function handleUpdateTask(input: UpdateTaskInput) {
+    if (!editingTask) return;
+    try {
+      setIsEditingTask(true);
+      setEditTaskError(null);
+      await updateTaskApi(editingTask.householdId, editingTask.id, input);
+      setEditingTask(null);
+      await fetchAllTasks();
+    } catch {
+      setEditTaskError('Failed to update task. Please try again.');
+    } finally {
+      setIsEditingTask(false);
+    }
+  }
+
+  async function handleDeleteTask() {
+    if (!editingTask) return;
+    try {
+      setIsEditingTask(true);
+      setEditTaskError(null);
+      await deleteTaskApi(editingTask.householdId, editingTask.id);
+      setEditingTask(null);
+      await fetchAllTasks();
+    } catch {
+      setEditTaskError('Failed to delete task. Please try again.');
+    } finally {
+      setIsEditingTask(false);
+    }
   }
 
   // calendar state
@@ -438,144 +497,32 @@ export default function ProfilePage() {
 
       <div className="max-w-[1400px] mx-auto p-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Tasks Section */}
-        <div className="bg-surface rounded-md p-6 shadow-sm border border-divider">
-          <div className="flex justify-between items-center mb-6 pb-4 border-b border-divider">
-            <h2 className="text-xl font-semibold text-sage">My Tasks</h2>
-          </div>
-
-          {/* Tabs */}
-          <div className="flex gap-2 mb-4">
-            {['all', 'pending', 'completed'].map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-4 py-2 rounded-sm text-sm font-medium transition-all capitalize ${
-                  activeTab === tab ? 'bg-soft-highlight text-text-primary' : 'text-text-secondary hover:bg-base'
-                }`}
-                type="button"
-              >
-                {tab}
-                {tab === 'all' && !tasksLoading ? ` (${allTasks.length})` : ''}
-                {tab === 'pending' && !tasksLoading ? ` (${activeTasks.length})` : ''}
-                {tab === 'completed' && !tasksLoading ? ` (${completedTasks.length})` : ''}
-              </button>
-            ))}
-          </div>
-
-          {tasksLoading ? (
-            <div className="text-text-secondary text-sm py-4">Loading tasks...</div>
-          ) : filteredTasks.length === 0 ? (
-            <div className="text-text-secondary text-sm py-4">
-              {activeTab === 'all'
-                ? 'No tasks assigned to you yet.'
-                : `No ${activeTab} tasks.`}
-            </div>
-          ) : (
-            <div className="flex flex-col gap-4">
-              {filteredTasks.map((task) => {
-                const done = isTaskCompleted(task);
-                const assignee = task.assignments[0]?.user;
-                const priority = task.priority || 'medium';
-                const completion = task.completions[0];
-
-                return (
-                  <div
-                    key={task.id}
-                    className={`flex items-start gap-4 p-4 rounded-sm border border-divider transition-all hover:border-sage hover:shadow-sm ${
-                      done ? 'cursor-pointer' : ''
-                    }`}
-                    onClick={() => {
-                      if (done) setViewingTask(task);
-                    }}
-                  >
-                    {/* Completion checkbox */}
-                    <div
-                      className={`w-6 h-6 rounded flex-shrink-0 mt-0.5 border-2 transition-all flex items-center justify-center ${
-                        done ? 'bg-success border-success text-white cursor-default' : 'border-divider'
-                      }`}
-                    >
-                      {done && <span className="text-base leading-none">&#10003;</span>}
-                    </div>
-
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className={`font-semibold flex-1 ${done ? 'line-through text-text-secondary' : ''}`}>
-                          {task.title}
-                        </span>
-
-                        <span
-                          className={`px-2 py-0.5 rounded text-[11px] font-semibold uppercase ${priorityStyles[priority]}`}
-                        >
-                          {priorityLabels[priority]}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-4 text-[13px] text-text-secondary flex-wrap">
-                        {/* Household name */}
-                        <span className="font-medium text-sage/80">{getHouseholdName(task.householdId)}</span>
-
-                        <span>&bull;</span>
-
-                        {/* Assignee */}
-                        <div className="flex items-center gap-1">
-                          {assignee ? (
-                            <>
-                              <div
-                                className="w-5 h-5 rounded-full text-white text-[10px] flex items-center justify-center"
-                                style={{ backgroundColor: getAvatarColor(assignee.id) }}
-                              >
-                                {getInitials(assignee.name)}
-                              </div>
-                              <span>{assignee.id === user?.id ? 'You' : assignee.name}</span>
-                            </>
-                          ) : (
-                            <span className="text-text-secondary italic">Unassigned</span>
-                          )}
-                        </div>
-
-                        <span>&bull;</span>
-                        <span>
-                          {done
-                            ? `Completed ${
-                                completion?.completedAt
-                                  ? new Date(completion.completedAt).toLocaleDateString('en-US', {
-                                      month: 'short',
-                                      day: 'numeric',
-                                    })
-                                  : ''
-                              }`
-                            : `Due: ${formatDueDate(task.dueDate)}`}
-                        </span>
-
-                        {task.isRecurring && task.recurrencePattern && (
-                          <>
-                            <span>&bull;</span>
-                            <span className="capitalize">{task.recurrencePattern}</span>
-                          </>
-                        )}
-
-                        {/* Photo indicator for completed tasks */}
-                        {done && completion?.photoUrl && (
-                          <>
-                            <span>&bull;</span>
-                            <span className="flex items-center gap-1 text-sage">
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <rect x="3" y="3" width="18" height="18" rx="2" />
-                                <circle cx="8.5" cy="8.5" r="1.5" />
-                                <polyline points="21 15 16 10 5 21" />
-                              </svg>
-                              Photo
-                            </span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+        <TaskListPanel
+          title="My Tasks"
+          tasks={allTasks}
+          loading={tasksLoading}
+          currentUserId={user?.id}
+          onComplete={(task) => setCompletingTask(task)}
+          onEdit={(task) => setEditingTask(task)}
+          onViewCompleted={(task) => setViewingTask(task)}
+          canEdit={(task) => task.assignments.some((a) => a.userId === user?.id)}
+          getSubtitle={(task) => getHouseholdName(task.householdId)}
+          emptyMessage="No tasks assigned to you yet."
+          tabCounts={{
+            all: allTasks.length,
+            pending: activeTasks.length,
+            completed: completedTasks.length,
+          }}
+          headerActions={
+            <button
+              type="button"
+              onClick={() => router.push('/profile/tasks')}
+              className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium transition-all hover:bg-base hover:border-sage"
+            >
+              Taskboard
+            </button>
+          }
+        />
 
         {/* Calendar Section */}
         <div className="bg-surface rounded-md p-6 shadow-sm border border-divider">
@@ -762,120 +709,56 @@ export default function ProfilePage() {
       </BaseModal>
 
       {/* Completed Task Details Modal */}
-      <BaseModal
-        open={!!viewingTask}
-        ariaLabel="Completed task details"
-        title={viewingTask?.title ?? 'Task Details'}
+      <TaskCompletionDetailsModal
+        task={viewingTask}
+        currentUserId={user?.id}
         subtitle={
           viewingTask
             ? `${getHouseholdName(viewingTask.householdId)} • ${
                 viewingTask.completions[0]?.completedAt
                   ? `Completed ${new Date(viewingTask.completions[0].completedAt).toLocaleDateString('en-US', {
-                      month: 'long',
-                      day: 'numeric',
-                      year: 'numeric',
-                      hour: 'numeric',
-                      minute: '2-digit',
+                      month: 'long', day: 'numeric', year: 'numeric',
+                      hour: 'numeric', minute: '2-digit',
                     })}`
                   : 'Completed'
               }`
             : undefined
         }
         onClose={() => setViewingTask(null)}
-        maxWidthClassName="max-w-[520px]"
-      >
-        {viewingTask && (
-          <div className="flex flex-col gap-4">
-            {/* Task description */}
-            {viewingTask.description && (
-              <div>
-                <div className="text-xs font-semibold text-text-secondary uppercase tracking-wide mb-1">Description</div>
-                <div className="text-sm text-text-primary whitespace-pre-wrap">{viewingTask.description}</div>
-              </div>
-            )}
+      />
 
-            {/* Task metadata */}
-            <div className="flex flex-wrap gap-3 text-sm">
-              <span className={`px-2 py-0.5 rounded text-[11px] font-semibold uppercase ${priorityStyles[viewingTask.priority || 'medium']}`}>
-                {priorityLabels[viewingTask.priority || 'medium']}
-              </span>
+      {/* Complete Task Modal */}
+      <CompleteTaskModal
+        open={!!completingTask}
+        taskTitle={completingTask?.title || ''}
+        isSubmitting={isCompleting}
+        error={completeError}
+        onClose={() => {
+          if (!isCompleting) {
+            setCompletingTask(null);
+            setCompleteError(null);
+          }
+        }}
+        onComplete={handleCompleteTask}
+      />
 
-              {viewingTask.dueDate && (
-                <span className="text-text-secondary">Due: {formatDueDate(viewingTask.dueDate)}</span>
-              )}
-
-              {viewingTask.isRecurring && viewingTask.recurrencePattern && (
-                <span className="text-text-secondary capitalize">{viewingTask.recurrencePattern}</span>
-              )}
-            </div>
-
-            {/* Completion details */}
-            {viewingTask.completions.length > 0 && (
-              <div className="border-t border-divider pt-4">
-                <div className="text-xs font-semibold text-text-secondary uppercase tracking-wide mb-2">Completion Details</div>
-
-                {viewingTask.completions.map((c) => (
-                  <div key={c.id} className="flex flex-col gap-3">
-                    {/* Completed by + time */}
-                    <div className="flex items-center gap-2 text-sm text-text-secondary">
-                      <div
-                        className="w-6 h-6 rounded-full text-white text-[10px] flex items-center justify-center"
-                        style={{ backgroundColor: getAvatarColor(c.user?.id ?? c.userId) }}
-                      >
-                        {c.user ? getInitials(c.user.name) : '?'}
-                      </div>
-                      {c.user && (
-                        <span className="font-medium text-text-primary">
-                          {c.user.id === user?.id ? 'You' : c.user.name}
-                        </span>
-                      )}
-                      <span>&bull;</span>
-                      <span>
-                        {new Date(c.completedAt).toLocaleDateString('en-US', {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric',
-                          hour: 'numeric',
-                          minute: '2-digit',
-                        })}
-                      </span>
-                    </div>
-
-                    {/* Notes */}
-                    {c.notes && (
-                      <div>
-                        <div className="text-xs font-medium text-text-secondary mb-1">Notes</div>
-                        <div className="text-sm text-text-primary bg-base rounded-sm p-3 whitespace-pre-wrap">
-                          {c.notes}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Photo */}
-                    {c.photoUrl && (
-                      <div>
-                        <div className="text-xs font-medium text-text-secondary mb-1">Photo</div>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={c.photoUrl}
-                          alt="Completion photo"
-                          className="rounded-sm border border-divider max-h-[300px] object-contain w-full bg-base"
-                        />
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="flex justify-end mt-2">
-              <Button type="button" variant="secondary" onClick={() => setViewingTask(null)}>
-                Close
-              </Button>
-            </div>
-          </div>
-        )}
-      </BaseModal>
+      {/* Edit Task Modal */}
+      <AddTaskModal
+        open={!!editingTask}
+        isSubmitting={isEditingTask}
+        error={editTaskError}
+        members={getMembersForTask(editingTask)}
+        editingTask={editingTask}
+        onClose={() => {
+          if (!isEditingTask) {
+            setEditingTask(null);
+            setEditTaskError(null);
+          }
+        }}
+        onCreate={async () => {}}
+        onUpdate={handleUpdateTask}
+        onDelete={handleDeleteTask}
+      />
     </div>
   );
 }
