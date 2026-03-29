@@ -15,13 +15,11 @@ import {
 import type { Household, HouseholdMember } from '@/types/households';
 import { getInitials, getAvatarColor } from '@/types/households';
 import type { Task } from '@/types/tasks';
+import { priorityStyles, priorityLabels, formatDueDate, isTaskCompleted } from '@/lib/task-helpers';
 import TaskDetailModal, { type TaskDetailInput } from '@/components/modals/CreateTaskModal';
 import CompleteTaskModal from '@/components/modals/CompleteTaskModal';
 import { CheckCircle2, Pencil, Plus, Calendar, RotateCw, AlertCircle } from 'lucide-react';
 
-/* ------------------------------------------------------------------ */
-/*  Lane color palette – deterministic per member, soft pastels        */
-/* ------------------------------------------------------------------ */
 
 const LANE_COLORS = [
   { bg: 'bg-[#EEF4EF]', accent: '#5A7C5E', border: 'border-[#5A7C5E]' },   // sage
@@ -46,35 +44,6 @@ function hashStr(s: string): number {
 
 function laneColor(userId: string) {
   return LANE_COLORS[hashStr(userId) % LANE_COLORS.length];
-}
-
-/* ------------------------------------------------------------------ */
-/*  Priority helpers                                                   */
-/* ------------------------------------------------------------------ */
-
-const priorityStyles: Record<string, string> = {
-  high: 'bg-urgent/10 text-urgent border border-urgent',
-  medium: 'bg-pending/10 text-pending border border-pending',
-  low: 'bg-success/10 text-success border border-success',
-};
-
-const priorityLabels: Record<string, string> = {
-  high: 'P1',
-  medium: 'P2',
-  low: 'P3',
-};
-
-function formatDueDate(dateStr: string | null): string {
-  if (!dateStr) return 'No due date';
-  const d = new Date(dateStr);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
-function isTaskCompleted(task: Task): boolean {
-  return (
-    task.completions.length > 0 ||
-    task.assignments.some((a) => a.status === 'COMPLETED')
-  );
 }
 
 /* ================================================================== */

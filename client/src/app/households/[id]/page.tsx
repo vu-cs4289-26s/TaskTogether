@@ -31,6 +31,7 @@ import CreateEventModal, {
 import BaseModal from "@/components/modals/BaseModal";
 import Button from "@/components/ui/Button";
 import { Maximize2, Plus } from "lucide-react";
+import { priorityStyles, priorityLabels, formatDueDate, isTaskCompleted } from "@/lib/task-helpers";
 
 import {
   listActivitiesApi,
@@ -44,30 +45,6 @@ import type {
   CreateActivityInput,
 } from "@/types/activities";
 
-const priorityStyles: Record<string, string> = {
-  high: "bg-urgent/10 text-urgent border border-urgent",
-  medium: "bg-pending/10 text-pending border border-pending",
-  low: "bg-success/10 text-success border border-success",
-};
-
-const priorityLabels: Record<string, string> = {
-  high: "P1",
-  medium: "P2",
-  low: "P3",
-};
-
-function formatDueDate(dateStr: string | null): string {
-  if (!dateStr) return "No due date";
-  const d = new Date(dateStr);
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-
-function isTaskCompleted(task: Task): boolean {
-  return (
-    task.completions.length > 0 ||
-    task.assignments.some((a) => a.status === "COMPLETED")
-  );
-}
 
 /** -------- Calendar helpers -------- */
 function pad2(n: number) {

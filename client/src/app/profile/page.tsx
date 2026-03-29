@@ -19,6 +19,7 @@ import { listTasksApi } from '@/lib/tasks.api';
 import type { Household } from '@/types/households';
 import type { Task } from '@/types/tasks';
 import { getInitials, getAvatarColor } from '@/types/households';
+import { formatDueDate, isTaskCompleted, priorityLabels, priorityStyles } from '@/lib/task-helpers';
 
 function pad2(n: number) {
   return String(n).padStart(2, '0');
@@ -120,24 +121,6 @@ function formatTimeRange(activity: Activity) {
   return `${datePart}, ${startTime} – ${endTime}`;
 }
 
-// ---- task helpers ----
-const priorityStyles: Record<string, string> = {
-  high: 'bg-urgent/10 text-urgent border border-urgent',
-  medium: 'bg-pending/10 text-pending border border-pending',
-  low: 'bg-success/10 text-success border border-success',
-};
-
-const priorityLabels: Record<string, string> = { high: 'P1', medium: 'P2', low: 'P3' };
-
-function isTaskCompleted(task: Task): boolean {
-  return task.completions.length > 0 || task.assignments.some((a) => a.status === 'COMPLETED');
-}
-
-function formatDueDate(dateStr: string | null): string {
-  if (!dateStr) return 'No due date';
-  const d = new Date(dateStr);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
 
 export default function ProfilePage() {
   const router = useRouter();
