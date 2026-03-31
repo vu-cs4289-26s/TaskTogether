@@ -1,4 +1,0 @@
--- AlterEnum
-ALTER TYPE "NotificationType" ADD VALUE 'TASK_UPCOMING';
-ALTER TYPE "NotificationType" ADD VALUE 'ISSUE_STATUS_CHANGED';
-ALTER TYPE "NotificationType" ADD VALUE 'EVENT_UPCOMING';

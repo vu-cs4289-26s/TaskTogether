@@ -16,7 +16,7 @@ export function authenticate(
       status: 'error',
       error: {
         code: 'AUTH_TOKEN_MISSING',
-        message: 'Authentication token is required',
+        message: 'Authentication token is required.',
       },
     });
     return;
@@ -33,7 +33,7 @@ export function authenticate(
       status: 'error',
       error: {
         code: 'AUTH_TOKEN_INVALID',
-        message: 'Invalid or expired authentication token',
+        message: 'Invalid or expired authentication token.',
       },
     });
   }

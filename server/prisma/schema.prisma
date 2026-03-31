@@ -1,12 +1,11 @@
 generator client {
-    provider    = "prisma-client-js"
+  provider = "prisma-client-js"
 }
 
 datasource db {
-    provider    = "postgresql"
-    url         = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
-
 
 enum Role {
   ADMIN
@@ -14,17 +13,17 @@ enum Role {
 }
 
 enum TaskStatus {
-    PENDING
-    IN_PROGRESS
-    COMPLETED
-    SKIPPED
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
 }
 
 enum IssueStatus {
-    OPEN
-    IN_PROGRESS
-    RESOLVED
-    ARCHIVED
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  ARCHIVED
 }
 
 enum IssuePriority {
@@ -42,17 +41,17 @@ enum IssueType {
 }
 
 enum ActivityType {
-    HOMEWORK
-    BONDING
-    CHORE
-    OTHER
+  HOMEWORK
+  BONDING
+  CHORE
+  OTHER
 }
 
 enum ActivityStatus {
-    SCHEDULED
-    IN_PROGRESS
-    COMPLETED
-    CANCELLED
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
 }
 
 enum NotificationType {
@@ -68,6 +67,7 @@ enum NotificationType {
 // ============================================
 
 model User {
+<<<<<<< HEAD
   id            String   @id @default(uuid())
   email         String   @unique
   name          String
@@ -79,18 +79,35 @@ model User {
   // User preferences
   timezone String?
   timezoneAuto Boolean @default(true)
+=======
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String
+  password  String 
+  avatar    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // track password changes
+  passwordUpdatedAt DateTime @default(now())
+
+  // 2FA
+  twoFactorEnabled Boolean @default(false)
+  twoFactorCode String?
+  twoFactorCodeExpiry DateTime?
+>>>>>>> 15f88a7d0137f480220f7edd8ffa355f2c3a1fac
 
   // Household memberships (many-to-many via join table)
   householdMemberships HouseholdMember[]
 
   // Tasks
-  createdTasks       Task[]           @relation("TaskCreator")
-  assignedTasks      TaskAssignment[]
-  completedTasks     TaskCompletion[]
+  createdTasks   Task[]           @relation("TaskCreator")
+  assignedTasks  TaskAssignment[]
+  completedTasks TaskCompletion[]
 
   // Issues
-  reportedIssues     Issue[]          @relation("IssueReporter")
-  issueComments      IssueComment[]
+  reportedIssues Issue[]        @relation("IssueReporter")
+  issueComments  IssueComment[]
 
   // Quality Time
   activityParticipants ActivityParticipant[]
@@ -119,17 +136,17 @@ model Household {
   updatedAt DateTime @updatedAt
 
   // Members (many-to-many via join table)
-  members   HouseholdMember[]
+  members HouseholdMember[]
 
   // Household data
-  tasks          Task[]
-  issues         Issue[]
-  rules          HouseholdRule[]
-  activities     QualityTimeActivity[]
-  invites        HouseholdInvite[]
-  deleteVotes    HouseholdDeleteVote[]
-  notifications  Notification[]
-  wikiSections   WikiSection[]
+  tasks         Task[]
+  issues        Issue[]
+  rules         HouseholdRule[]
+  activities    QualityTimeActivity[]
+  invites       HouseholdInvite[]
+  deleteVotes   HouseholdDeleteVote[]
+  notifications Notification[]
+  wikiSections  WikiSection[]
 }
 
 model HouseholdMember {
@@ -137,8 +154,8 @@ model HouseholdMember {
   role      Role     @default(MEMBER)
   createdAt DateTime @default(now())
 
-  userId      String
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   householdId String
   household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
@@ -149,11 +166,11 @@ model HouseholdMember {
 }
 
 model HouseholdInvite {
-  id          String   @id @default(uuid())
-  code        String   @unique
-  expiresAt   DateTime
-  usedAt      DateTime?
-  createdAt   DateTime @default(now())
+  id        String    @id @default(uuid())
+  code      String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
 
   householdId String
   household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
@@ -164,14 +181,14 @@ model HouseholdInvite {
 }
 
 model HouseholdDeleteVote {
-  id          String   @id @default(uuid())
-  createdAt   DateTime @default(now())
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
 
   householdId String
   household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
 
-  voterId     String
-  voter       User      @relation(fields: [voterId], references: [id], onDelete: Cascade)
+  voterId String
+  voter   User   @relation(fields: [voterId], references: [id], onDelete: Cascade)
 
   @@unique([householdId, voterId])
   @@index([householdId])
@@ -183,28 +200,28 @@ model HouseholdDeleteVote {
 // ============================================
 
 model Task {
-  id                String   @id @default(uuid())
+  id                String    @id @default(uuid())
   title             String
   description       String?
   dueDate           DateTime?
-  isRecurring       Boolean  @default(false)
-  recurrencePattern String?  // "daily", "weekly", "monthly"
-  isRotating        Boolean  @default(false)
-  rotationIndex     Int      @default(0)  // which member is next (0-based, sorted by HouseholdMember.createdAt ASC)
-  priority          String?  @default("medium") // "low", "medium", "high"
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  isRecurring       Boolean   @default(false)
+  recurrencePattern String? // "daily", "weekly", "monthly"
+  isRotating        Boolean   @default(false)
+  rotationIndex     Int       @default(0) // which member is next (0-based, sorted by HouseholdMember.createdAt ASC)
+  priority          String?   @default("medium") // "low", "medium", "high"
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   // Relations
-  creatorId    String
-  creator      User      @relation("TaskCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  creatorId String
+  creator   User   @relation("TaskCreator", fields: [creatorId], references: [id], onDelete: Cascade)
 
-  householdId  String
-  household    Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
 
   // Assignments and completions
-  assignments  TaskAssignment[]
-  completions  TaskCompletion[]
+  assignments TaskAssignment[]
+  completions TaskCompletion[]
 
   @@index([householdId])
   @@index([creatorId])
@@ -223,7 +240,7 @@ model TaskAssignment {
   // Relations
   taskId String
   task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  
+
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -235,14 +252,14 @@ model TaskAssignment {
 
 model TaskCompletion {
   id          String   @id @default(uuid())
-  photoUrl    String?  // Optional proof photo
+  photoUrl    String? // Optional proof photo
   notes       String?
   completedAt DateTime @default(now())
 
   // Relations
   taskId String
   task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  
+
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -256,24 +273,24 @@ model TaskCompletion {
 // ============================================
 
 model Issue {
-  id          String        @id @default(uuid())
+  id          String      @id @default(uuid())
   title       String
   description String?
   photoUrl    String?
-  status      IssueStatus   @default(OPEN)
+  status      IssueStatus @default(OPEN)
 
-  type        IssueType     @default(MAINTENANCE)  
+  type        IssueType     @default(MAINTENANCE)
   priority    IssuePriority @default(MEDIUM)
   isAnonymous Boolean       @default(false)
 
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   reportedById String
-  reportedBy   User        @relation("IssueReporter", fields: [reportedById], references: [id], onDelete: Cascade)
+  reportedBy   User   @relation("IssueReporter", fields: [reportedById], references: [id], onDelete: Cascade)
 
-  householdId  String
-  household    Household   @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
 
   comments IssueComment[]
 
@@ -286,16 +303,16 @@ model Issue {
 model IssueComment {
   id        String   @id @default(uuid())
   content   String
-  photoUrl  String?  // Optional photo for resolution
+  photoUrl  String? // Optional photo for resolution
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // Relations
   issueId String
   issue   Issue  @relation(fields: [issueId], references: [id], onDelete: Cascade)
-  
-  userId  String
-  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([issueId])
   @@index([userId])
@@ -307,21 +324,21 @@ model IssueComment {
 // ============================================
 
 model QualityTimeActivity {
-  id          String         @id @default(uuid())
-  title       String
-  description String?
+  id           String         @id @default(uuid())
+  title        String
+  description  String?
   activityType ActivityType
-  status      ActivityStatus @default(SCHEDULED)
-  scheduledAt DateTime
-  startedAt   DateTime?
-  completedAt DateTime?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  status       ActivityStatus @default(SCHEDULED)
+  scheduledAt  DateTime
+  startedAt    DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
 
   // Relations
   householdId String
   household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
-  
+
   // Participants and check-ins
   participants ActivityParticipant[]
   checkIns     ActivityCheckIn[]
@@ -333,15 +350,15 @@ model QualityTimeActivity {
 }
 
 model ActivityParticipant {
-  id         String   @id @default(uuid())
-  createdAt  DateTime @default(now())
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
 
   // Relations
   activityId String
   activity   QualityTimeActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
-  
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([activityId, userId])
   @@index([activityId])
@@ -350,16 +367,16 @@ model ActivityParticipant {
 
 model ActivityCheckIn {
   id          String   @id @default(uuid())
-  photoUrl    String?  // Photo check-in proof
+  photoUrl    String? // Photo check-in proof
   notes       String?
   checkedInAt DateTime @default(now())
 
   // Relations
   activityId String
   activity   QualityTimeActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
-  
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([activityId])
   @@index([userId])
@@ -389,15 +406,15 @@ model HouseholdRule {
 // ============================================
 
 model Notification {
-  id          String           @id @default(uuid())
-  type        NotificationType
-  isRead      Boolean          @default(false)
-  message     String
-  payload     Json?
-  createdAt   DateTime         @default(now())
+  id        String           @id @default(uuid())
+  type      NotificationType
+  isRead    Boolean          @default(false)
+  message   String
+  payload   Json?
+  createdAt DateTime         @default(now())
 
-  userId      String
-  user        User      @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
 
   householdId String
   household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
@@ -413,19 +430,36 @@ model Notification {
 // ============================================
 
 model WikiSection {
-  id          String   @id @default(uuid())
-  slug        String   // e.g. "garbage", "appliances"
-  title       String   // e.g. "Garbage & Recycling"
-  content     String   @default("")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(uuid())
+  slug      String // e.g. "garbage", "appliances"
+  title     String // e.g. "Garbage & Recycling"
+  content   String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   householdId String
   household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
 
   updatedById String?
-  updatedBy   User?     @relation("WikiUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedBy   User?   @relation("WikiUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   @@unique([householdId, slug])
   @@index([householdId])
+}
+
+
+// ============================================
+// CHANGE PASSWORD
+// ============================================
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  email     String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  usedAt    DateTime?
+
+  @@index([email])
+  @@index([expiresAt])
 }

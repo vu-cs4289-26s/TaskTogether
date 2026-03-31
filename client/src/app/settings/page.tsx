@@ -1,16 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import AppNavbar from '@/components/shared/AppNavbar';
 import Toggle from '@/components/settings/toggle';
-import TimezoneSelector from '@/components/settings/TimezoneSelector';
-import { getCurrentUserApi, updateUserPreferencesApi } from '@/lib/user.api';
-import type { User } from '@/types/user';
+import Button from '@/components/ui/Button';
+import Field, { inputClass } from '@/components/ui/Field';
+import api from '@/lib/api';
 
 type SectionProps = {
   title: string;
   description: string;
-  children: React.ReactNode;
+  children: ReactNode;
 };
 
 function SettingsSection({ title, description, children }: SectionProps) {
@@ -28,13 +28,18 @@ function SettingsSection({ title, description, children }: SectionProps) {
 type ItemProps = {
   label: string;
   hint?: string;
-  right: React.ReactNode;
+  right: ReactNode;
   noDivider?: boolean;
 };
 
 function SettingItem({ label, hint, right, noDivider }: ItemProps) {
   return (
-    <div className={['py-4 flex items-center justify-between gap-6', noDivider ? '' : 'border-b border-divider'].join(' ')}>
+    <div
+      className={[
+        'py-4 flex items-center justify-between gap-6',
+        noDivider ? '' : 'border-b border-divider',
+      ].join(' ')}
+    >
       <div className="flex-1">
         <div className="font-semibold text-text-primary">{label}</div>
         {hint && <div className="text-[13px] text-text-secondary mt-1">{hint}</div>}
@@ -44,59 +49,557 @@ function SettingItem({ label, hint, right, noDivider }: ItemProps) {
   );
 }
 
+function getPasswordStrengthMessage(password: string): string {
+  if (!password) return 'Use at least 8 characters, with uppercase, lowercase, and a number.';
+  if (password.length < 8) return 'Too short';
+  if (!/[A-Z]/.test(password)) return 'Add at least one uppercase letter';
+  if (!/[a-z]/.test(password)) return 'Add at least one lowercase letter';
+  if (!/[0-9]/.test(password)) return 'Add at least one number';
+  return 'Strong password';
+}
+
+function isPasswordStrong(password: string): boolean {
+  return (
+    password.length >= 8 &&
+    /[A-Z]/.test(password) &&
+    /[a-z]/.test(password) &&
+    /[0-9]/.test(password)
+  );
+}
+
+function formatPasswordDate(dateString?: string) {
+  if (!dateString) return 'No password update date available';
+
+  const date = new Date(dateString);
+
+  if (Number.isNaN(date.getTime())) {
+    return 'No password update date available.';
+  }
+
+  return date.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+}
+
+type TwoFactorModalProps = {
+  isOpen: boolean;
+  mode: 'enable' | 'disable';
+  loading?: boolean;
+  error?: string | null;
+  success?: string | null;
+  code: string;
+  setCode: (value: string) => void;
+  onClose: () => void;
+  onSubmit: (e: React.FormEvent) => void;
+};
+
+function TwoFactorModal({
+  isOpen,
+  mode,
+  loading = false,
+  error = null,
+  success = null,
+  code,
+  setCode,
+  onClose,
+  onSubmit,
+}: TwoFactorModalProps) {
+  if (!isOpen) return null;
+
+  const title =
+    mode === 'enable'
+      ? 'Enable Two-Factor Authentication'
+      : 'Disable Two-Factor Authentication';
+
+  const description =
+    mode === 'enable'
+      ? 'Enter the verification code sent to your email to turn on two-factor authentication.'
+      : 'Enter the verification code sent to your email to turn off two-factor authentication.';
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/35 px-4">
+      <div className="w-full max-w-[520px] rounded-md border border-divider bg-surface shadow-xl">
+        <div className="p-6 border-b border-divider">
+          <h2 className="text-2xl font-heading font-semibold text-sage">{title}</h2>
+          <p className="mt-2 text-sm text-text-secondary">{description}</p>
+        </div>
+
+        <div className="p-6">
+          {error && (
+            <div className="mb-4 rounded-sm border border-urgent/30 bg-urgent/10 p-3 text-sm text-urgent">
+              {error}
+            </div>
+          )}
+
+          {success && (
+            <div className="mb-4 rounded-sm border border-green-600/30 bg-green-600/10 p-3 text-sm text-green-700">
+              {success}
+            </div>
+          )}
+
+          <form onSubmit={onSubmit} className="space-y-4">
+            <Field
+              label="Verification Code"
+              htmlFor="twoFactorCode"
+              required
+              hint="Enter the 6-digit code from your email."
+            >
+              <input
+                id="twoFactorCode"
+                type="text"
+                inputMode="numeric"
+                maxLength={6}
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                className={inputClass}
+                disabled={loading}
+              />
+            </Field>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <Button type="button" variant="secondary" onClick={onClose} disabled={loading}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={loading}>
+                {loading ? 'Verifying...' : mode === 'enable' ? 'Enable 2FA' : 'Disable 2FA'}
+              </Button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type ChangePasswordModalProps = {
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess: (passwordUpdatedAt: string) => void;
+  twoFactorEnabled: boolean;
+};
+
+function ChangePasswordModal({
+  isOpen,
+  onClose,
+  onSuccess,
+  twoFactorEnabled,
+}: ChangePasswordModalProps) {
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [twoFactorCode, setTwoFactorCode] = useState('');
+  const [passwordChangeCodeSent, setPasswordChangeCodeSent] = useState(false);
+  const [sendingPasswordChangeCode, setSendingPasswordChangeCode] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setTwoFactorCode('');
+      setPasswordChangeCodeSent(false);
+      setSendingPasswordChangeCode(false);
+      setLoading(false);
+      setError(null);
+      setSuccess(null);
+    }
+  }, [isOpen]);
+
+  const strengthMessage = useMemo(
+    () => getPasswordStrengthMessage(newPassword),
+    [newPassword]
+  );
+
+  if (!isOpen) return null;
+
+  async function handleSendPasswordChangeCode() {
+    setError(null);
+    setSuccess(null);
+    setSendingPasswordChangeCode(true);
+
+    try {
+      const res = await api.post('/auth/2fa/send-password-change-code');
+      setPasswordChangeCodeSent(true);
+      setSuccess(
+        res.data?.data?.message || 'A verification code was sent to your email.'
+      );
+    } catch (err: unknown) {
+      const errorObj = err as {
+        response?: { data?: { error?: { message?: string } } };
+      };
+
+      setError(
+        errorObj.response?.data?.error?.message ||
+          'Could not send verification code. Please try again.'
+      );
+    } finally {
+      setSendingPasswordChangeCode(false);
+    }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSuccess(null);
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setError('Please fill out all password fields.');
+      return;
+    }
+
+    if (!isPasswordStrong(newPassword)) {
+      setError(
+        'New password must be at least 8 characters and include uppercase, lowercase, and a number.'
+      );
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setError('New password and confirm password do not match.');
+      return;
+    }
+
+    if (currentPassword === newPassword) {
+      setError('New password must be different from your current password.');
+      return;
+    }
+
+    if (twoFactorEnabled) {
+      if (!passwordChangeCodeSent) {
+        setError('Please send a verification code before updating your password.');
+        return;
+      }
+
+      if (!twoFactorCode || twoFactorCode.length !== 6) {
+        setError('Please enter your 6-digit 2FA verification code.');
+        return;
+      }
+    }
+
+    setLoading(true);
+
+    try {
+      const res = await api.post('/auth/change-password', {
+        currentPassword,
+        newPassword,
+        twoFactorCode: twoFactorEnabled ? twoFactorCode : undefined,
+      });
+
+      const updatedAt =
+        res.data?.data?.passwordUpdatedAt || new Date().toISOString();
+
+      setSuccess(res.data?.data?.message || 'Password changed successfully.');
+      onSuccess(updatedAt);
+
+      setTimeout(() => {
+        onClose();
+      }, 1000);
+    } catch (err: unknown) {
+      const errorObj = err as {
+        response?: { data?: { error?: { message?: string } } };
+      };
+
+      setError(
+        errorObj.response?.data?.error?.message ||
+          'Could not change password. Please try again.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/35 px-4">
+      <div className="w-full max-w-[520px] rounded-md border border-divider bg-surface shadow-xl">
+        <div className="p-6 border-b border-divider">
+          <h2 className="text-2xl font-heading font-semibold text-sage">
+            Change Password
+          </h2>
+          <p className="mt-2 text-sm text-text-secondary">
+            Enter your current password, then choose a new one.
+          </p>
+        </div>
+
+        <div className="p-6">
+          {error && (
+            <div className="mb-4 rounded-sm border border-urgent/30 bg-urgent/10 p-3 text-sm text-urgent">
+              {error}
+            </div>
+          )}
+
+          {success && (
+            <div className="mb-4 rounded-sm border border-green-600/30 bg-green-600/10 p-3 text-sm text-green-700">
+              {success}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <Field label="Current Password" htmlFor="currentPassword" required>
+              <input
+                id="currentPassword"
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                className={inputClass}
+                autoComplete="current-password"
+                disabled={loading}
+              />
+            </Field>
+
+            <Field
+              label="New Password"
+              htmlFor="newPassword"
+              required
+              hint={strengthMessage}
+            >
+              <input
+                id="newPassword"
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className={inputClass}
+                autoComplete="new-password"
+                disabled={loading}
+              />
+            </Field>
+
+            <Field
+              label="Confirm New Password"
+              htmlFor="confirmPassword"
+              required
+              hint={
+                confirmPassword
+                  ? confirmPassword === newPassword
+                    ? 'Passwords match'
+                    : 'Passwords do not match'
+                  : undefined
+              }
+            >
+              <input
+                id="confirmPassword"
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className={inputClass}
+                autoComplete="new-password"
+                disabled={loading}
+              />
+            </Field>
+
+            {twoFactorEnabled && (
+              <>
+                <div className="rounded-sm border border-divider bg-base p-4">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div>
+                      <div className="font-semibold text-text-primary">
+                        Two-Factor Verification
+                      </div>
+                      <div className="text-[13px] text-text-secondary mt-1">
+                        For security, request and enter the code sent to your email before
+                        updating your password.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleSendPasswordChangeCode}
+                      disabled={sendingPasswordChangeCode || loading}
+                      className="px-4 py-2 rounded-sm border border-divider bg-transparent text-text-primary transition hover:bg-base hover:border-sage disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {sendingPasswordChangeCode
+                        ? 'Sending...'
+                        : passwordChangeCodeSent
+                        ? 'Resend Code'
+                        : 'Send Code'}
+                    </button>
+                  </div>
+                </div>
+
+                <Field
+                  label="2FA Code"
+                  htmlFor="twoFactorCode"
+                  required
+                  hint="Enter the 6-digit code from your email."
+                >
+                  <input
+                    id="twoFactorCode"
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={twoFactorCode}
+                    onChange={(e) =>
+                      setTwoFactorCode(e.target.value.replace(/\D/g, '').slice(0, 6))
+                    }
+                    className={inputClass}
+                    disabled={loading}
+                  />
+                </Field>
+              </>
+            )}
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={onClose}
+                disabled={loading}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={loading}>
+                {loading ? 'Saving...' : 'Update Password'}
+              </Button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const [pushNotifs, setPushNotifs] = useState(true);
   const [taskReminders, setTaskReminders] = useState(true);
   const [weeklyDigest, setWeeklyDigest] = useState(false);
 
-  const [notifFreq, setNotifFreq] = useState<'realtime' | 'hourly' | 'daily' | 'weekly'>('daily');
+  const [notifFreq, setNotifFreq] = useState<
+    'realtime' | 'hourly' | 'daily' | 'weekly'
+  >('daily');
 
-  const [profileVisibility, setProfileVisibility] = useState<'all' | 'household' | 'private'>('household');
-  const [showStats, setShowStats] = useState(true);
-  const [activityStatus, setActivityStatus] = useState(true);
+  const [_profileVisibility, _setProfileVisibility] = useState<
+    'all' | 'household' | 'private'
+  >('household');
+  const [_showStats, _setShowStats] = useState(true);
+  const [_activityStatus, _setActivityStatus] = useState(true);
 
-  // const [defaultHousehold, setDefaultHousehold] = useState<'main' | 'beach' | 'campus' | 'last'>('main');
-  // const [language, setLanguage] = useState<'en' | 'es' | 'fr' | 'de'>('en');
-  const [timezone, setTimezone] = useState<string | null>(null);
-  const [timezoneAuto, setTimezoneAuto] = useState(true);
-  const [isLoading, setIsLoading] = useState(true);
+  const [defaultHousehold, setDefaultHousehold] = useState<
+    'main' | 'beach' | 'campus' | 'last'
+  >('main');
+  const [_language, _setLanguage] = useState<'en' | 'es' | 'fr' | 'de'>('en');
+  const [timezone, setTimezone] = useState<'est' | 'cst' | 'mst' | 'pst'>('est');
   const [startWeekOn, setStartWeekOn] = useState<'sunday' | 'monday'>('sunday');
   const [dateFormat, setDateFormat] = useState<'mdy' | 'dmy' | 'ymd'>('mdy');
 
-  // Load user data on mount
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [passwordUpdatedAt, setPasswordUpdatedAt] = useState<string>('');
+  const [passwordDateLoading, setPasswordDateLoading] = useState(true);
+
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
+  const [twoFactorLoading, setTwoFactorLoading] = useState(true);
+  const [twoFactorSubmitting, setTwoFactorSubmitting] = useState(false);
+  const [twoFactorCode, setTwoFactorCode] = useState('');
+  const [twoFactorError, setTwoFactorError] = useState<string | null>(null);
+  const [twoFactorSuccess, setTwoFactorSuccess] = useState<string | null>(null);
+  const [twoFactorModalOpen, setTwoFactorModalOpen] = useState(false);
+  const [twoFactorMode, setTwoFactorMode] = useState<'enable' | 'disable'>('enable');
+
   useEffect(() => {
     async function loadUser() {
       try {
-        const user = await getCurrentUserApi();
-        if (user.timezone !== undefined) {
-          setTimezone(user.timezone);
-        }
-        if (user.timezoneAuto !== undefined) {
-          setTimezoneAuto(user.timezoneAuto);
-        }
-      } catch (error) {
-        console.error('Failed to load user preferences:', error);
+        const res = await api.get('/users/me');
+        setPasswordUpdatedAt(res.data?.data?.passwordUpdatedAt || '');
+        setTwoFactorEnabled(Boolean(res.data?.data?.twoFactorEnabled));
+      } catch {
+        setPasswordUpdatedAt('');
+        setTwoFactorEnabled(false);
       } finally {
-        setIsLoading(false);
+        setPasswordDateLoading(false);
+        setTwoFactorLoading(false);
       }
     }
+
     loadUser();
   }, []);
 
-  // Handle timezone change
-  const handleTimezoneChange = async (newTimezone: string | null, newAuto: boolean) => {
-    setTimezone(newTimezone);
-    setTimezoneAuto(newAuto);
-    
+  function closeTwoFactorModal() {
+    setTwoFactorModalOpen(false);
+    setTwoFactorCode('');
+    setTwoFactorError(null);
+    setTwoFactorSuccess(null);
+  }
+
+  async function handleOpenTwoFactorModal(mode: 'enable' | 'disable') {
+    setTwoFactorMode(mode);
+    setTwoFactorCode('');
+    setTwoFactorError(null);
+    setTwoFactorSuccess(null);
+    setTwoFactorSubmitting(true);
+
     try {
-      await updateUserPreferencesApi({
-        timezone: newTimezone,
-        timezoneAuto: newAuto,
-      });
-    } catch (error) {
-      console.error('Failed to update timezone:', error);
+      const res =
+        mode === 'enable'
+          ? await api.post('/auth/2fa/enable')
+          : await api.post('/auth/2fa/disable/request');
+
+      setTwoFactorModalOpen(true);
+      setTwoFactorSuccess(
+        res.data?.data?.message || 'A verification code was sent to your email.'
+      );
+    } catch (err: unknown) {
+      const errorObj = err as {
+        response?: { data?: { error?: { message?: string } } };
+      };
+
+      setTwoFactorError(
+        errorObj.response?.data?.error?.message ||
+          `Could not ${mode === 'enable' ? 'start enabling' : 'start disabling'} 2FA. Please try again.`
+      );
+      setTwoFactorModalOpen(true);
+    } finally {
+      setTwoFactorSubmitting(false);
     }
-  };
+  }
+
+  async function handleSubmitTwoFactor(e: React.FormEvent) {
+    e.preventDefault();
+    setTwoFactorError(null);
+    setTwoFactorSuccess(null);
+
+    if (!twoFactorCode || twoFactorCode.length !== 6) {
+      setTwoFactorError('Please enter the 6-digit verification code.');
+      return;
+    }
+
+    setTwoFactorSubmitting(true);
+
+    try {
+      const res =
+        twoFactorMode === 'enable'
+          ? await api.post('/auth/2fa/verify-enable', {
+              code: twoFactorCode,
+            })
+          : await api.post('/auth/2fa/disable/verify', {
+              code: twoFactorCode,
+            });
+
+      setTwoFactorEnabled(Boolean(res.data?.data?.twoFactorEnabled));
+      setTwoFactorSuccess(
+        res.data?.data?.message ||
+          (twoFactorMode === 'enable'
+            ? 'Two-factor authentication has been enabled.'
+            : 'Two-factor authentication has been disabled.')
+      );
+
+      setTimeout(() => {
+        closeTwoFactorModal();
+      }, 1000);
+    } catch (err: unknown) {
+      const errorObj = err as {
+        response?: { data?: { error?: { message?: string } } };
+      };
+
+      setTwoFactorError(
+        errorObj.response?.data?.error?.message ||
+          'Could not verify code. Please try again.'
+      );
+    } finally {
+      setTwoFactorSubmitting(false);
+    }
+  }
 
   return (
     <div className="min-h-screen bg-base">
@@ -116,25 +619,35 @@ export default function SettingsPage() {
           title="Notifications"
           description="Choose how you want to be notified about household activities"
         >
-
           <SettingItem
             label="Push Notifications"
             hint="Get real-time notifications on your device"
-            right={<Toggle checked={pushNotifs} onChange={setPushNotifs} label="Push notifications" />}
+            right={
+              <Toggle
+                checked={pushNotifs}
+                onChange={setPushNotifs}
+                label="Push notifications"
+              />
+            }
           />
           <SettingItem
             label="Task Reminders"
             hint="Remind me about upcoming task deadlines"
-            right={<Toggle checked={taskReminders} onChange={setTaskReminders} label="Task reminders" />}
+            right={
+              <Toggle
+                checked={taskReminders}
+                onChange={setTaskReminders}
+                label="Task reminders"
+              />
+            }
           />
-        
           <SettingItem
             label="Notification Frequency"
             hint="How often to send email notifications"
             right={
               <select
                 value={notifFreq}
-                onChange={(e) => setNotifFreq(e.target.value as any)}
+                onChange={(e) => setNotifFreq(e.target.value as typeof notifFreq)}
                 className="min-w-[220px] px-4 py-2 rounded-sm border border-divider bg-surface text-sm text-text-primary focus:outline-none focus:border-sage"
               >
                 <option value="realtime">Real-time</option>
@@ -147,38 +660,6 @@ export default function SettingsPage() {
           />
         </SettingsSection>
 
-        {/* <SettingsSection
-          title="Privacy"
-          description="Control your privacy and visibility settings"
-        >
-          <SettingItem
-            label="Profile Visibility"
-            hint="Who can see your profile information"
-            right={
-              <select
-                value={profileVisibility}
-                onChange={(e) => setProfileVisibility(e.target.value as any)}
-                className="min-w-[220px] px-4 py-2 rounded-sm border border-divider bg-surface text-sm text-text-primary focus:outline-none focus:border-sage"
-              >
-                <option value="all">All household members</option>
-                <option value="household">Only my households</option>
-                <option value="private">Private</option>
-              </select>
-            }
-          />
-          <SettingItem
-            label="Show Completion Stats"
-            hint="Display your task completion statistics to others"
-            right={<Toggle checked={showStats} onChange={setShowStats} label="Show completion stats" />}
-          />
-          <SettingItem
-            label="Activity Status"
-            hint="Show when you're active on TaskTogether"
-            right={<Toggle checked={activityStatus} onChange={setActivityStatus} label="Activity status" />}
-            noDivider
-          />
-        </SettingsSection> */}
-
         <SettingsSection
           title="Account"
           description="Manage your account security and connected services"
@@ -188,10 +669,15 @@ export default function SettingsPage() {
             <div className="p-4 rounded-sm bg-soft-highlight flex items-center justify-between gap-4 flex-wrap">
               <div>
                 <div className="font-semibold">••••••••</div>
-                <div className="text-xs text-text-secondary mt-1">Last changed on January 15, 2026</div>
+                <div className="text-xs text-text-secondary mt-1">
+                  {passwordDateLoading
+                    ? 'Loading password update date...'
+                    : `Last changed on: ${formatPasswordDate(passwordUpdatedAt)}.`}
+                </div>
               </div>
               <button
                 type="button"
+                onClick={() => setChangePasswordOpen(true)}
                 className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary transition hover:bg-base hover:border-sage"
               >
                 Change Password
@@ -201,12 +687,13 @@ export default function SettingsPage() {
 
           <div className="py-4 border-b border-divider">
             <div className="font-semibold text-text-primary mb-1">Connected Accounts</div>
-            <div className="text-[13px] text-text-secondary">Link external accounts for easy sign-in</div>
+            <div className="text-[13px] text-text-secondary">
+              Link external accounts for easy sign-in
+            </div>
 
             <div className="mt-4 p-4 rounded-sm bg-soft-highlight flex items-center justify-between gap-4 flex-wrap">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-sm flex items-center justify-center bg-[#4285F4]">
-                  {/* Simple “G” badge placeholder */}
                   <span className="text-white font-bold text-sm">G</span>
                 </div>
                 <div>
@@ -223,13 +710,27 @@ export default function SettingsPage() {
 
           <SettingItem
             label="Two-Factor Authentication"
-            hint="Add an extra layer of security to your account"
+            hint={
+              twoFactorLoading
+                ? 'Loading two-factor authentication status...'
+                : twoFactorEnabled
+                ? 'Two-factor authentication is currently enabled on your account.'
+                : 'Add an extra layer of security to your account'
+            }
             right={
               <button
                 type="button"
-                className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary transition hover:bg-base hover:border-sage"
+                onClick={() =>
+                  handleOpenTwoFactorModal(twoFactorEnabled ? 'disable' : 'enable')
+                }
+                disabled={twoFactorSubmitting || twoFactorLoading}
+                className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary transition hover:bg-base hover:border-sage disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                Enable 2FA
+                {twoFactorSubmitting
+                  ? 'Please wait...'
+                  : twoFactorEnabled
+                  ? 'Disable 2FA'
+                  : 'Enable 2FA'}
               </button>
             }
             noDivider
@@ -246,7 +747,9 @@ export default function SettingsPage() {
             right={
               <select
                 value={defaultHousehold}
-                onChange={(e) => setDefaultHousehold(e.target.value as any)}
+                onChange={(e) =>
+                  setDefaultHousehold(e.target.value as typeof defaultHousehold)
+                }
                 className="min-w-[220px] px-4 py-2 rounded-sm border border-divider bg-surface text-sm text-text-primary focus:outline-none focus:border-sage"
               >
                 <option value="main">Main Street Apartment</option>
@@ -255,6 +758,7 @@ export default function SettingsPage() {
                 <option value="last">Last visited</option>
               </select>
             }
+<<<<<<< HEAD
           /> */}
           {/* <SettingItem
             label="Language"
@@ -273,18 +777,21 @@ export default function SettingsPage() {
             }
           /> */}
           
-        <SettingItem
-          label="Timezone"
-          hint="Used for task deadlines and event times"
-          right={
-            <div className="min-w-[280px]">
-              <TimezoneSelector
+          <SettingItem
+            label="Timezone"
+            hint="Used for task deadlines and event times"
+            right={
+              <select
                 value={timezone}
-                autoDetect={timezoneAuto}
-                onChange={handleTimezoneChange}
-              />
-            </div>
-          }
+                onChange={(e) => setTimezone(e.target.value as typeof timezone)}
+                className="min-w-[220px] px-4 py-2 rounded-sm border border-divider bg-surface text-sm text-text-primary focus:outline-none focus:border-sage"
+              >
+                <option value="est">Eastern Time (ET)</option>
+                <option value="cst">Central Time (CT)</option>
+                <option value="mst">Mountain Time (MT)</option>
+                <option value="pst">Pacific Time (PT)</option>
+              </select>
+            }
         />
           <SettingItem
             label="Start Week On"
@@ -292,7 +799,7 @@ export default function SettingsPage() {
             right={
               <select
                 value={startWeekOn}
-                onChange={(e) => setStartWeekOn(e.target.value as any)}
+                onChange={(e) => setStartWeekOn(e.target.value as typeof startWeekOn)}
                 className="min-w-[220px] px-4 py-2 rounded-sm border border-divider bg-surface text-sm text-text-primary focus:outline-none focus:border-sage"
               >
                 <option value="sunday">Sunday</option>
@@ -306,7 +813,7 @@ export default function SettingsPage() {
             right={
               <select
                 value={dateFormat}
-                onChange={(e) => setDateFormat(e.target.value as any)}
+                onChange={(e) => setDateFormat(e.target.value as typeof dateFormat)}
                 className="min-w-[220px] px-4 py-2 rounded-sm border border-divider bg-surface text-sm text-text-primary focus:outline-none focus:border-sage"
               >
                 <option value="mdy">MM/DD/YYYY</option>
@@ -317,38 +824,28 @@ export default function SettingsPage() {
             noDivider
           />
         </SettingsSection>
-
-        {/* <SettingsSection
-          title="Data & Storage"
-          description="Manage your data and account"
-        >
-          <SettingItem
-            label="Download Your Data"
-            hint="Get a copy of all your TaskTogether data"
-            right={
-              <button
-                type="button"
-                className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary transition hover:bg-base hover:border-sage"
-              >
-                Request Export
-              </button>
-            }
-          />
-          <SettingItem
-            label="Clear Cache"
-            hint="Remove temporary files and cached data"
-            right={
-              <button
-                type="button"
-                className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary transition hover:bg-base hover:border-sage"
-              >
-                Clear Cache
-              </button>
-            }
-            noDivider
-          />
-        </SettingsSection> */}
       </main>
+
+      <ChangePasswordModal
+        isOpen={changePasswordOpen}
+        onClose={() => setChangePasswordOpen(false)}
+        onSuccess={(updatedAt) => {
+          setPasswordUpdatedAt(updatedAt);
+        }}
+        twoFactorEnabled={twoFactorEnabled}
+      />
+
+      <TwoFactorModal
+        isOpen={twoFactorModalOpen}
+        mode={twoFactorMode}
+        loading={twoFactorSubmitting}
+        error={twoFactorError}
+        success={twoFactorSuccess}
+        code={twoFactorCode}
+        setCode={setTwoFactorCode}
+        onClose={closeTwoFactorModal}
+        onSubmit={handleSubmitTwoFactor}
+      />
     </div>
   );
 }
