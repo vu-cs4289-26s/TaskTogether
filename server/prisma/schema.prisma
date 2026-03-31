@@ -67,19 +67,6 @@ enum NotificationType {
 // ============================================
 
 model User {
-<<<<<<< HEAD
-  id            String   @id @default(uuid())
-  email         String   @unique
-  name          String
-  password      String   // bcrypt hashed
-  avatar        String?
-  createdAt     DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // User preferences
-  timezone String?
-  timezoneAuto Boolean @default(true)
-=======
   id        String   @id @default(uuid())
   email     String   @unique
   name      String
@@ -95,7 +82,10 @@ model User {
   twoFactorEnabled Boolean @default(false)
   twoFactorCode String?
   twoFactorCodeExpiry DateTime?
->>>>>>> 15f88a7d0137f480220f7edd8ffa355f2c3a1fac
+
+  // User preferences
+  timezone String?
+  timezoneAuto Boolean @default(true)
 
   // Household memberships (many-to-many via join table)
   householdMemberships HouseholdMember[]

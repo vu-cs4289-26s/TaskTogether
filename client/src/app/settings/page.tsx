@@ -6,6 +6,8 @@ import Toggle from '@/components/settings/toggle';
 import Button from '@/components/ui/Button';
 import Field, { inputClass } from '@/components/ui/Field';
 import api from '@/lib/api';
+import TimezoneSelector from '@/components/settings/TimezoneSelector';
+import { updateUserPreferencesApi } from '@/lib/user.api';
 
 type SectionProps = {
   title: string;
@@ -480,7 +482,9 @@ export default function SettingsPage() {
     'main' | 'beach' | 'campus' | 'last'
   >('main');
   const [_language, _setLanguage] = useState<'en' | 'es' | 'fr' | 'de'>('en');
-  const [timezone, setTimezone] = useState<'est' | 'cst' | 'mst' | 'pst'>('est');
+  const [timezone, setTimezone] = useState<string | null>(null);
+  const [timezoneAuto, setTimezoneAuto] = useState(true);
+  const [timezoneLoading, setTimezoneLoading] = useState(true);
   const [startWeekOn, setStartWeekOn] = useState<'sunday' | 'monday'>('sunday');
   const [dateFormat, setDateFormat] = useState<'mdy' | 'dmy' | 'ymd'>('mdy');
 
@@ -503,12 +507,15 @@ export default function SettingsPage() {
         const res = await api.get('/users/me');
         setPasswordUpdatedAt(res.data?.data?.passwordUpdatedAt || '');
         setTwoFactorEnabled(Boolean(res.data?.data?.twoFactorEnabled));
+        setTimezone(res.data?.data?.timezone || null);
+        setTimezoneAuto(res.data?.data?.timezoneAuto !== false);
       } catch {
         setPasswordUpdatedAt('');
         setTwoFactorEnabled(false);
       } finally {
         setPasswordDateLoading(false);
         setTwoFactorLoading(false);
+        setTimezoneLoading(false);
       }
     }
 
@@ -598,6 +605,28 @@ export default function SettingsPage() {
       );
     } finally {
       setTwoFactorSubmitting(false);
+    }
+  }
+
+  async function handleTimezoneChange(newTimezone: string | null, newAuto: boolean) {
+    // Save previous values for potential rollback
+    const previousTimezone = timezone;
+    const previousAuto = timezoneAuto;
+
+    // Optimistically update UI
+    setTimezone(newTimezone);
+    setTimezoneAuto(newAuto);
+
+    try {
+      await updateUserPreferencesApi({
+        timezone: newTimezone,
+        timezoneAuto: newAuto,
+      });
+    } catch (err) {
+      // Revert to previous values on error
+      setTimezone(previousTimezone);
+      setTimezoneAuto(previousAuto);
+      console.error('Failed to update timezone:', err);
     }
   }
 
@@ -758,40 +787,25 @@ export default function SettingsPage() {
                 <option value="last">Last visited</option>
               </select>
             }
-<<<<<<< HEAD
           /> */}
-          {/* <SettingItem
-            label="Language"
-            hint="Choose your preferred language"
-            right={
-              <select
-                value={language}
-                onChange={(e) => setLanguage(e.target.value as any)}
-                className="min-w-[220px] px-4 py-2 rounded-sm border border-divider bg-surface text-sm text-text-primary focus:outline-none focus:border-sage"
-              >
-                <option value="en">English</option>
-                <option value="es">Español</option>
-                <option value="fr">Français</option>
-                <option value="de">Deutsch</option>
-              </select>
-            }
-          /> */}
+
           
-          <SettingItem
-            label="Timezone"
-            hint="Used for task deadlines and event times"
-            right={
-              <select
-                value={timezone}
-                onChange={(e) => setTimezone(e.target.value as typeof timezone)}
-                className="min-w-[220px] px-4 py-2 rounded-sm border border-divider bg-surface text-sm text-text-primary focus:outline-none focus:border-sage"
-              >
-                <option value="est">Eastern Time (ET)</option>
-                <option value="cst">Central Time (CT)</option>
-                <option value="mst">Mountain Time (MT)</option>
-                <option value="pst">Pacific Time (PT)</option>
-              </select>
-            }
+        <SettingItem
+          label="Timezone"
+          hint="Used for task deadlines and event times"
+          right={
+            <div className="min-w-[280px]">
+              {timezoneLoading ? (
+                <div className="h-10 bg-gray-200 rounded animate-pulse" />
+              ) : (
+                <TimezoneSelector
+                  value={timezone}
+                  autoDetect={timezoneAuto}
+                  onChange={handleTimezoneChange}
+                />
+              )}
+            </div>
+          }
         />
           <SettingItem
             label="Start Week On"

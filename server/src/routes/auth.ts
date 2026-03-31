@@ -1021,7 +1021,6 @@ router.get('/me', authenticate, async (req: AuthenticatedRequest, res: Response)
   });
 });
 
-<<<<<<< HEAD
 // PUT /api/users/me/preferences
 router.put('/me/preferences', authenticate, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const { timezone, timezoneAuto } = req.body;
@@ -1051,6 +1050,3 @@ router.put('/me/preferences', authenticate, async (req: AuthenticatedRequest, re
 });
 
 export default router;
-=======
-export default router;
->>>>>>> 15f88a7d0137f480220f7edd8ffa355f2c3a1fac
