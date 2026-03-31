@@ -52,8 +52,8 @@ export default function SettingsPage() {
   const [showStats, setShowStats] = useState(true);
   const [activityStatus, setActivityStatus] = useState(true);
 
-  const [defaultHousehold, setDefaultHousehold] = useState<'main' | 'beach' | 'campus' | 'last'>('main');
-  const [language, setLanguage] = useState<'en' | 'es' | 'fr' | 'de'>('en');
+//   const [defaultHousehold, setDefaultHousehold] = useState<'main' | 'beach' | 'campus' | 'last'>('main');
+//   const [language, setLanguage] = useState<'en' | 'es' | 'fr' | 'de'>('en');
   const [timezone, setTimezone] = useState<'est' | 'cst' | 'mst' | 'pst'>('est');
   const [startWeekOn, setStartWeekOn] = useState<'sunday' | 'monday'>('sunday');
   const [dateFormat, setDateFormat] = useState<'mdy' | 'dmy' | 'ymd'>('mdy');
@@ -200,7 +200,7 @@ export default function SettingsPage() {
           title="Preferences"
           description="Customize your TaskTogether experience"
         >
-          <SettingItem
+          {/* <SettingItem
             label="Default Household"
             hint="Which household to show when you log in"
             right={
@@ -215,7 +215,7 @@ export default function SettingsPage() {
                 <option value="last">Last visited</option>
               </select>
             }
-          />
+          /> */}
           {/* <SettingItem
             label="Language"
             hint="Choose your preferred language"
@@ -232,6 +232,7 @@ export default function SettingsPage() {
               </select>
             }
           /> */}
+          
           <SettingItem
             label="Timezone"
             hint="Used for task deadlines and event times"
