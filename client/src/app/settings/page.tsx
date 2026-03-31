@@ -1,8 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import AppNavbar from '@/components/shared/AppNavbar';
 import Toggle from '@/components/settings/toggle';
+import TimezoneSelector from '@/components/settings/TimezoneSelector';
+import { getCurrentUserApi, updateUserPreferencesApi } from '@/lib/user.api';
+import type { User } from '@/types/user';
 
 type SectionProps = {
   title: string;
@@ -52,11 +55,48 @@ export default function SettingsPage() {
   const [showStats, setShowStats] = useState(true);
   const [activityStatus, setActivityStatus] = useState(true);
 
-//   const [defaultHousehold, setDefaultHousehold] = useState<'main' | 'beach' | 'campus' | 'last'>('main');
-//   const [language, setLanguage] = useState<'en' | 'es' | 'fr' | 'de'>('en');
-  const [timezone, setTimezone] = useState<'est' | 'cst' | 'mst' | 'pst'>('est');
+  // const [defaultHousehold, setDefaultHousehold] = useState<'main' | 'beach' | 'campus' | 'last'>('main');
+  // const [language, setLanguage] = useState<'en' | 'es' | 'fr' | 'de'>('en');
+  const [timezone, setTimezone] = useState<string | null>(null);
+  const [timezoneAuto, setTimezoneAuto] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
   const [startWeekOn, setStartWeekOn] = useState<'sunday' | 'monday'>('sunday');
   const [dateFormat, setDateFormat] = useState<'mdy' | 'dmy' | 'ymd'>('mdy');
+
+  // Load user data on mount
+  useEffect(() => {
+    async function loadUser() {
+      try {
+        const user = await getCurrentUserApi();
+        if (user.timezone !== undefined) {
+          setTimezone(user.timezone);
+        }
+        if (user.timezoneAuto !== undefined) {
+          setTimezoneAuto(user.timezoneAuto);
+        }
+      } catch (error) {
+        console.error('Failed to load user preferences:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    loadUser();
+  }, []);
+
+  // Handle timezone change
+  const handleTimezoneChange = async (newTimezone: string | null, newAuto: boolean) => {
+    setTimezone(newTimezone);
+    setTimezoneAuto(newAuto);
+    
+    try {
+      await updateUserPreferencesApi({
+        timezone: newTimezone,
+        timezoneAuto: newAuto,
+      });
+    } catch (error) {
+      console.error('Failed to update timezone:', error);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-base">
@@ -233,22 +273,19 @@ export default function SettingsPage() {
             }
           /> */}
           
-          <SettingItem
-            label="Timezone"
-            hint="Used for task deadlines and event times"
-            right={
-              <select
+        <SettingItem
+          label="Timezone"
+          hint="Used for task deadlines and event times"
+          right={
+            <div className="min-w-[280px]">
+              <TimezoneSelector
                 value={timezone}
-                onChange={(e) => setTimezone(e.target.value as any)}
-                className="min-w-[220px] px-4 py-2 rounded-sm border border-divider bg-surface text-sm text-text-primary focus:outline-none focus:border-sage"
-              >
-                <option value="est">Eastern Time (ET)</option>
-                <option value="cst">Central Time (CT)</option>
-                <option value="mst">Mountain Time (MT)</option>
-                <option value="pst">Pacific Time (PT)</option>
-              </select>
-            }
-          />
+                autoDetect={timezoneAuto}
+                onChange={handleTimezoneChange}
+              />
+            </div>
+          }
+        />
           <SettingItem
             label="Start Week On"
             hint="First day of the week in calendars"

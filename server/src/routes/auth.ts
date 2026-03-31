@@ -12,12 +12,14 @@ function generateToken(userId: string): string {
   return jwt.sign({ userId }, JWT_SECRET, { expiresIn: '7d' });
 }
 
-function sanitizeUser(user: { id: string; email: string; name: string; avatar: string | null }) {
+function sanitizeUser(user: { id: string; email: string; name: string; avatar: string | null; timezone: string | null; timezoneAuto: boolean }) {
   return {
     id: user.id,
     email: user.email,
     name: user.name,
     avatar: user.avatar,
+    timezone: user.timezone,
+    timezoneAuto: user.timezoneAuto,
   };
 }
 
@@ -146,6 +148,34 @@ router.get('/me', authenticate, async (req: AuthenticatedRequest, res: Response)
     status: 'success',
     data: sanitizeUser(user),
   });
+});
+
+// PUT /api/users/me/preferences
+router.put('/me/preferences', authenticate, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  const { timezone, timezoneAuto } = req.body;
+
+  try {
+    const user = await prisma.user.update({
+      where: { id: req.userId },
+      data: {
+        timezone: timezone ?? undefined,
+        timezoneAuto: timezoneAuto ?? undefined,
+      },
+    });
+
+    res.json({
+      status: 'success',
+      data: sanitizeUser(user),
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'Failed to update preferences',
+      },
+    });
+  }
 });
 
 export default router;

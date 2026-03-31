@@ -74,7 +74,11 @@ model User {
   password      String   // bcrypt hashed
   avatar        String?
   createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  updatedAt DateTime @updatedAt
+
+  // User preferences
+  timezone String?
+  timezoneAuto Boolean @default(true)
 
   // Household memberships (many-to-many via join table)
   householdMemberships HouseholdMember[]

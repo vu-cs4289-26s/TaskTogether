@@ -5,4 +5,7 @@ export type User = {
   username?: string;
   phone?: string;
   createdAt?: string;
+  avatar?: string | null;
+  timezone?: string | null;
+  timezoneAuto?: boolean;
 };
