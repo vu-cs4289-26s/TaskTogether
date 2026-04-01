@@ -164,50 +164,51 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            cd /home/${{ secrets.EC2_USERNAME }}/tasktogether
-            
+            REPO_DIR="/home/${{ secrets.EC2_USERNAME }}/tasktogether"
+            REPO_URL="https://${{ secrets.GH_PAT }}@github.com/vu-cs4289-26s/TaskTogether.git"
+
+            # Clone repo if it doesn't exist, otherwise pull latest
+            if [ ! -d "$REPO_DIR/.git" ]; then
+              echo "Cloning repository..."
+              git clone "$REPO_URL" "$REPO_DIR"
+            fi
+
+            cd "$REPO_DIR"
+
+            # Set remote URL with PAT for auth
+            git remote set-url origin "$REPO_URL"
+
             # Pull latest code from prod branch
             git fetch origin prod
             git checkout prod
-            git pull origin prod
+            git reset --hard origin/prod
             
-            # Create production .env file if it doesn't exist
-            if [ ! -f .env ]; then
-              echo "Creating production .env file..."
-              cat > .env << 'EOF'
-            # Database
+            # Always recreate .env from secrets (ensures updates propagate)
+            echo "Writing production .env file..."
+            cat > .env << ENVEOF
             POSTGRES_USER=${{ secrets.POSTGRES_USER }}
             POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
             POSTGRES_DB=${{ secrets.POSTGRES_DB }}
-            
-            # Server
             SERVER_PORT=${{ secrets.SERVER_PORT }}
             DATABASE_URL=postgresql://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@postgres:5432/${{ secrets.POSTGRES_DB }}
             JWT_SECRET=${{ secrets.JWT_SECRET }}
             API_HOST=0.0.0.0
             API_PORT=8000
-            
-            # CORS
             ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}
             CLIENT_URL=${{ secrets.CLIENT_URL }}
-            
-            # AWS
             AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
             AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
             AWS_REGION=${{ secrets.AWS_REGION }}
             S3_BUCKET=${{ secrets.S3_BUCKET }}
-            
-            # SMTP
             SMTP_HOST=${{ secrets.SMTP_HOST }}
             SMTP_PORT=${{ secrets.SMTP_PORT }}
             SMTP_USER=${{ secrets.SMTP_USER }}
             SMTP_PASS=${{ secrets.SMTP_PASS }}
-            
-            # Client
             CLIENT_PORT=${{ secrets.CLIENT_PORT }}
             NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
-            EOF
-            fi
+            ENVEOF
+            # Strip leading whitespace from .env lines
+            sed -i 's/^[[:space:]]*//' .env
             
             # Build and start production containers
             docker compose -f docker-compose.prod.yml down
