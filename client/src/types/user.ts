@@ -8,6 +8,4 @@ export type User = {
   createdAt?: string;
   passwordUpdatedAt?: string | null;
   twoFactorEnabled?: boolean;
-  timezone?: string | null;
-  timezoneAuto?: boolean;
 };

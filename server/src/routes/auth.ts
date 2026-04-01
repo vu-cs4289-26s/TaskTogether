@@ -24,8 +24,6 @@ function sanitizeUser(user: {
   passwordUpdatedAt: Date | null;
   twoFactorEnabled: boolean;
   createdAt?: Date;
-  timezone: string | null; 
-  timezoneAuto: boolean
 }) {
   return {
     id: user.id,
@@ -35,8 +33,6 @@ function sanitizeUser(user: {
     passwordUpdatedAt: user.passwordUpdatedAt,
     twoFactorEnabled: user.twoFactorEnabled,
     createdAt: user.createdAt,
-    timezone: user.timezone,
-    timezoneAuto: user.timezoneAuto,
   };
 }
 
@@ -1019,34 +1015,6 @@ router.get('/me', authenticate, async (req: AuthenticatedRequest, res: Response)
     status: 'success',
     data: sanitizeUser(user),
   });
-});
-
-// PUT /api/users/me/preferences
-router.put('/me/preferences', authenticate, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-  const { timezone, timezoneAuto } = req.body;
-
-  try {
-    const user = await prisma.user.update({
-      where: { id: req.userId },
-      data: {
-        timezone: timezone ?? undefined,
-        timezoneAuto: timezoneAuto ?? undefined,
-      },
-    });
-
-    res.json({
-      status: 'success',
-      data: sanitizeUser(user),
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: 'error',
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'Failed to update preferences',
-      },
-    });
-  }
 });
 
 export default router;

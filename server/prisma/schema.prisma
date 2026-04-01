@@ -83,10 +83,6 @@ model User {
   twoFactorCode String?
   twoFactorCodeExpiry DateTime?
 
-  // User preferences
-  timezone String?
-  timezoneAuto Boolean @default(true)
-
   // Household memberships (many-to-many via join table)
   householdMemberships HouseholdMember[]
 
