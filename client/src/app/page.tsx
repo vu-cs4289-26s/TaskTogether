@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import AuthModal from '@/components/modals/AuthModal';
 import ForgotPasswordModal from '@/components/modals/ForgotPasswordModal';
@@ -231,5 +231,9 @@ function LandingPageContent() {
 }
 
 export default function Home() {
-  return <LandingPageContent />;
+  return (
+    <Suspense fallback={null}>
+      <LandingPageContent />
+    </Suspense>
+  );
 }
