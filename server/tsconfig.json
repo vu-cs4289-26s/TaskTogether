@@ -16,7 +16,8 @@
     "moduleResolution": "node",
     "incremental": true,
     "tsBuildInfoFile": "./.tsbuildinfo",
-    "baseUrl": "./src"
+    "baseUrl": "./src",
+    "skipDefaultLibCheck": true
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
