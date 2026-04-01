@@ -8,6 +8,7 @@ import {
 } from '../middleware/authorization.js';
 import { AuthenticatedRequest } from '../types/index.js';
 import prisma from '../lib/prisma.js';
+import { sendEmail } from '../utils/sendEmail.js';
 
 const router = Router();
 
@@ -695,6 +696,152 @@ router.delete(
       res.status(500).json({
         status: 'error',
         error: { code: 'INTERNAL_ERROR', message: 'Failed to expire invite' },
+      });
+    }
+  }
+);
+
+// ============================================
+// POST /api/households/:id/invites/email — Send email invite (admin only)
+// ============================================
+router.post(
+  '/:id/invites/email',
+  requireHouseholdMember,
+  requireAdmin,
+  async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const { email } = req.body;
+
+      // Validate email
+      if (!email || typeof email !== 'string' || !email.includes('@')) {
+        res.status(400).json({
+          status: 'error',
+          error: { code: 'VALIDATION_ERROR', message: 'Valid email is required' },
+        });
+        return;
+      }
+
+      // Get household info
+      const household = await prisma.household.findUnique({
+        where: { id: req.householdId! },
+        select: { name: true },
+      });
+
+      if (!household) {
+        res.status(404).json({
+          status: 'error',
+          error: { code: 'HOUSEHOLD_NOT_FOUND', message: 'Household not found' },
+        });
+        return;
+      }
+
+      // Check if email is already a member
+      const existingUser = await prisma.user.findUnique({
+        where: { email: email.toLowerCase() },
+        select: { id: true },
+      });
+
+      if (existingUser) {
+        const existingMembership = await prisma.householdMember.findUnique({
+          where: {
+            userId_householdId: {
+              userId: existingUser.id,
+              householdId: req.householdId!,
+            },
+          },
+        });
+
+        if (existingMembership) {
+          res.status(409).json({
+            status: 'error',
+            error: {
+              code: 'ALREADY_MEMBER',
+              message: 'This user is already a member of this household',
+            },
+          });
+          return;
+        }
+      }
+
+      // Check for existing active invite
+      let invite = await prisma.householdInvite.findFirst({
+        where: {
+          householdId: req.householdId!,
+          expiresAt: { gt: new Date() },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      // Create new invite if none exists
+      if (!invite) {
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        const createInviteWithRetry = async (): Promise<HouseholdInvite> => {
+          const MAX_ATTEMPTS = 5;
+          for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            const code = crypto.randomBytes(4).toString('hex').toUpperCase();
+            try {
+              return await prisma.householdInvite.create({
+                data: {
+                  code,
+                  expiresAt,
+                  householdId: req.householdId!,
+                },
+              });
+            } catch (err) {
+              const isUniqueViolation =
+                err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';
+              if (!isUniqueViolation || attempt === MAX_ATTEMPTS) {
+                throw err;
+              }
+            }
+          }
+          throw new Error('Failed to create invite after retries');
+        };
+        invite = await createInviteWithRetry();
+      }
+
+      const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+      const inviteUrl = `${clientUrl}/invite/${invite.code}`;
+
+      // Send email
+      await sendEmail({
+        to: email.toLowerCase(),
+        subject: `You've been invited to join ${household.name} on TaskTogether`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <h2 style="color: #2d6a4f;">You're Invited to Join ${household.name}!</h2>
+            <p>Hello,</p>
+            <p>You've been invited to join the household <strong>${household.name}</strong> on TaskTogether.</p>
+            <p>Click the button below to accept the invitation and join:</p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${inviteUrl}" 
+                 style="background-color: #2d6a4f; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; display: inline-block;">
+                Accept Invitation
+              </a>
+            </div>
+            <p>Or copy and paste this link into your browser:</p>
+            <p style="word-break: break-all; color: #666;">${inviteUrl}</p>
+            <p style="color: #666; font-size: 14px; margin-top: 30px;">
+              <strong>Note:</strong> This invitation link expires in 7 days.
+            </p>
+            <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
+            <p style="color: #999; font-size: 12px;">
+              If you didn't expect this invitation, you can safely ignore this email.
+            </p>
+          </div>
+        `,
+        text: `You've been invited to join ${household.name} on TaskTogether.\n\nVisit this link to accept: ${inviteUrl}\n\nThis invitation expires in 7 days.`,
+      });
+
+      res.status(200).json({
+        status: 'success',
+        data: { email: email.toLowerCase(), sent: true },
+      });
+    } catch (err) {
+      console.error('POST /api/households/:id/invites/email error:', err);
+      res.status(500).json({
+        status: 'error',
+        error: { code: 'INTERNAL_ERROR', message: 'Failed to send invite email' },
       });
     }
   }
