@@ -44,6 +44,11 @@ export async function expireInviteApi(householdId: string): Promise<void> {
   await api.delete(`/households/${householdId}/invites/active`);
 }
 
+export async function sendEmailInviteApi(householdId: string, email: string): Promise<{ email: string; sent: boolean }> {
+  const res = await api.post(`/households/${householdId}/invites/email`, { email });
+  return res.data.data;
+}
+
 export async function listMembersApi(
   householdId: string
 ): Promise<Array<{ id: string; name: string; email: string; avatar: string | null; role: string; joinedAt: string }>> {

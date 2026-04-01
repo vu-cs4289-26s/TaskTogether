@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import type { HouseholdMember } from '@/types/households';
 import { getInitials, getAvatarColor } from '@/types/households';
-import { createInviteApi, getActiveInviteApi, expireInviteApi, removeMemberApi, promoteMemberApi } from '@/lib/households.api';
+import { createInviteApi, getActiveInviteApi, expireInviteApi, removeMemberApi, promoteMemberApi, sendEmailInviteApi } from '@/lib/households.api';
 
 type Props = {
   open: boolean;
@@ -31,6 +31,12 @@ export default function ManageMembersModal({
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // Email invite states
+  const [emailToInvite, setEmailToInvite] = useState('');
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
+  const [emailError, setEmailError] = useState<string | null>(null);
 
   const isAdmin = myRole === 'ADMIN';
 
@@ -141,6 +147,28 @@ export default function ManageMembersModal({
     if (inviteCode) {
       navigator.clipboard.writeText(inviteCode);
       setCopied(true);
+    }
+  }
+
+  async function handleSendEmailInvite() {
+    setEmailError(null);
+    setEmailSent(false);
+    
+    if (!emailToInvite || !emailToInvite.includes('@')) {
+      setEmailError('Please enter a valid email address.');
+      return;
+    }
+
+    try {
+      setEmailSending(true);
+      await sendEmailInviteApi(householdId, emailToInvite);
+      setEmailSent(true);
+      setEmailToInvite('');
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: { message?: string } } } };
+      setEmailError(e.response?.data?.error?.message || 'Failed to send invite email.');
+    } finally {
+      setEmailSending(false);
     }
   }
 
@@ -278,17 +306,51 @@ export default function ManageMembersModal({
                 </div>
               </div>
             ) : (
+            <button
+              type="button"
+              onClick={handleGenerateInvite}
+              disabled={inviteLoading}
+              className="px-5 py-2.5 rounded-sm bg-sage text-white font-medium flex items-center gap-2 transition-all hover:bg-sage-hover hover:-translate-y-px disabled:opacity-60"
+            >
+              {inviteLoading ? 'Generating...' : 'Generate Invite Code'}
+            </button>
+          )}
+
+          {/* Email Invite Section */}
+          <div className="mt-4 pt-4 border-t border-divider">
+            <div className="text-sm font-medium text-text-secondary mb-2">Or invite by email:</div>
+            <div className="flex items-center gap-2">
+              <input
+                type="email"
+                value={emailToInvite}
+                onChange={(e) => setEmailToInvite(e.target.value)}
+                placeholder="email@example.com"
+                disabled={emailSending}
+                className="flex-1 px-3 py-2 rounded-sm border border-divider bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-sage/30 focus:border-sage transition disabled:opacity-60"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleSendEmailInvite();
+                  }
+                }}
+              />
               <button
                 type="button"
-                onClick={handleGenerateInvite}
-                disabled={inviteLoading}
-                className="px-5 py-2.5 rounded-sm bg-sage text-white font-medium flex items-center gap-2 transition-all hover:bg-sage-hover hover:-translate-y-px disabled:opacity-60"
+                onClick={handleSendEmailInvite}
+                disabled={emailSending || !emailToInvite}
+                className="px-4 py-2 rounded-sm bg-sage text-white font-medium text-sm transition hover:bg-sage-hover disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                {inviteLoading ? 'Generating...' : 'Generate Invite Code'}
+                {emailSending ? 'Sending...' : 'Send Invite'}
               </button>
+            </div>
+            {emailSent && (
+              <div className="mt-2 text-sm text-sage">Invite email sent successfully!</div>
+            )}
+            {emailError && (
+              <div className="mt-2 text-sm text-red-600">{emailError}</div>
             )}
           </div>
-        )}
+        </div>
+      )}
 
         {error && (
           <div className="mb-4 text-sm text-red-600">{error}</div>
