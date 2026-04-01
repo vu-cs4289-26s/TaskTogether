@@ -990,28 +990,30 @@ export default function HouseholdDashboardPage() {
           </div>
 
           <div className="flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="danger"
-              onClick={async () => {
-                if (!id || !activeActivity) return;
-                // Keep delete separate from edit to match user expectations.
-                setIsUpdatingEvent(true);
-                setUpdateEventError(null);
-                const deletingId = activeActivity.id;
-                setActivities((prev) => prev.filter((a) => a.id !== deletingId));
-                try {
-                  await deleteActivityApi(id, deletingId);
-                } catch {
-                } finally {
-                  setIsUpdatingEvent(false);
-                  closeActivityDetails();
-                }
-              }}
-              disabled={!activeActivity || isUpdatingEvent}
-            >
-              Delete
-            </Button>
+            {isAdmin && (
+              <Button
+                type="button"
+                variant="danger"
+                onClick={async () => {
+                  if (!id || !activeActivity) return;
+                  // Keep delete separate from edit to match user expectations.
+                  setIsUpdatingEvent(true);
+                  setUpdateEventError(null);
+                  const deletingId = activeActivity.id;
+                  setActivities((prev) => prev.filter((a) => a.id !== deletingId));
+                  try {
+                    await deleteActivityApi(id, deletingId);
+                  } catch {
+                  } finally {
+                    setIsUpdatingEvent(false);
+                    closeActivityDetails();
+                  }
+                }}
+                disabled={!activeActivity || isUpdatingEvent}
+              >
+                Delete
+              </Button>
+            )}
 
             <Button
               type="button"
@@ -1049,7 +1051,7 @@ export default function HouseholdDashboardPage() {
           }
         }}
         onSave={handleUpdateEvent}
-        onDelete={handleDeleteEvent}
+        onDelete={isAdmin ? handleDeleteEvent : undefined}
       />
     </div>
   );

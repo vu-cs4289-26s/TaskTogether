@@ -14,7 +14,7 @@ import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 
 function LandingPageContent() {
-  const { user, login, verifyTwoFactorLogin, register } = useAuth();
+  const { user, login, loginWithGoogle, verifyTwoFactorLogin, register } = useAuth();
 
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'login' | 'register'>('login');
@@ -123,6 +123,31 @@ function LandingPageContent() {
     }
   };
 
+  const handleGoogleAuth = async (credential: string) => {
+    setAuthError(null);
+    setAuthLoading(true);
+
+    try {
+      const result = await loginWithGoogle(credential);
+
+      if (result.requires2FA) {
+        setPendingTwoFactorUserId(result.userId);
+        return;
+      }
+
+      setPendingTwoFactorUserId(null);
+      setModalOpen(false);
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { error?: { message?: string } } } };
+      setAuthError(
+        error.response?.data?.error?.message ||
+          'Google sign-in failed. Please try again.'
+      );
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
   const handleForgotPassword = async (email: string) => {
     setForgotError(null);
     setForgotSuccess(null);
@@ -180,6 +205,7 @@ function LandingPageContent() {
         onLogin={handleLogin}
         onVerifyTwoFactor={handleVerifyTwoFactor}
         onRegister={handleRegister}
+        onGoogleCredential={handleGoogleAuth}
         onForgotPassword={openForgotPassword}
         error={authError}
         loading={authLoading}

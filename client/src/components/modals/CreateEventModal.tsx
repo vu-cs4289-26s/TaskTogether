@@ -174,9 +174,9 @@ export default function CreateEventModal({
       subtitle={mode === 'edit' ? 'Update this event' : 'Add an event to the calendar'}
       isBlocking={isSubmitting}
       onClose={onClose}
-      maxWidthClassName="max-w-[620px]"
+      maxWidthClassName="max-w-[700px]"
     >
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-4 max-h-[calc(100vh-14rem)] overflow-y-auto pr-1">
         <Field label={<RequiredLabel text="Event Name" />} htmlFor="event-name">
           <input
             id="event-name"

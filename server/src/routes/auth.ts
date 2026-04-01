@@ -11,6 +11,7 @@ const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
 const RESET_TOKEN_TTL_MS = 1000 * 60 * 60;
 const TWO_FACTOR_CODE_TTL_MS = 1000 * 60 * 10;
+const GOOGLE_TOKEN_INFO_URL = 'https://oauth2.googleapis.com/tokeninfo';
 
 function generateToken(userId: string): string {
   return jwt.sign({ userId }, JWT_SECRET, { expiresIn: '7d' });
@@ -21,6 +22,8 @@ function sanitizeUser(user: {
   email: string;
   name: string;
   avatar: string | null;
+  googleId?: string | null;
+  googleEmail?: string | null;
   passwordUpdatedAt: Date | null;
   twoFactorEnabled: boolean;
   createdAt?: Date;
@@ -30,6 +33,8 @@ function sanitizeUser(user: {
     email: user.email,
     name: user.name,
     avatar: user.avatar,
+    googleLinked: Boolean(user.googleId),
+    googleEmail: user.googleEmail,
     passwordUpdatedAt: user.passwordUpdatedAt,
     twoFactorEnabled: user.twoFactorEnabled,
     createdAt: user.createdAt,
@@ -73,6 +78,53 @@ function getPasswordValidationError(password: string): string | null {
 
 function generateTwoFactorCode(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+type GoogleTokenInfo = {
+  aud?: string;
+  azp?: string;
+  email?: string;
+  email_verified?: string | boolean;
+  iss?: string;
+  name?: string;
+  picture?: string;
+  sub?: string;
+};
+
+async function verifyGoogleCredential(credential: string) {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+
+  if (!clientId) {
+    throw new Error('Google OAuth is not configured on the server.');
+  }
+
+  const response = await fetch(
+    `${GOOGLE_TOKEN_INFO_URL}?id_token=${encodeURIComponent(credential)}`
+  );
+
+  if (!response.ok) {
+    throw new Error('Google token verification failed.');
+  }
+
+  const tokenInfo = (await response.json()) as GoogleTokenInfo;
+
+  const emailVerified =
+    tokenInfo.email_verified === true || tokenInfo.email_verified === 'true';
+  const validIssuer =
+    tokenInfo.iss === 'accounts.google.com' ||
+    tokenInfo.iss === 'https://accounts.google.com';
+  const validAudience = tokenInfo.aud === clientId || tokenInfo.azp === clientId;
+
+  if (!tokenInfo.sub || !tokenInfo.email || !emailVerified || !validIssuer || !validAudience) {
+    throw new Error('Google account could not be verified.');
+  }
+
+  return {
+    googleId: tokenInfo.sub,
+    email: normalizeEmail(tokenInfo.email),
+    name: tokenInfo.name?.trim() || tokenInfo.email.split('@')[0],
+    avatar: tokenInfo.picture || null,
+  };
 }
 
 async function sendPasswordResetEmail(email: string, resetUrl: string): Promise<void> {
@@ -364,6 +416,187 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
     },
   });
 });
+
+// POST /api/auth/google
+router.post('/google', async (req: Request, res: Response): Promise<void> => {
+  const { credential } = req.body;
+
+  if (!credential || typeof credential !== 'string') {
+    res.status(400).json({
+      status: 'error',
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Google credential is required',
+      },
+    });
+    return;
+  }
+
+  try {
+    const googleProfile = await verifyGoogleCredential(credential);
+
+    const existingGoogleUser = await prisma.user.findUnique({
+      where: { googleId: googleProfile.googleId },
+    });
+
+    const existingEmailUser = await prisma.user.findUnique({
+      where: { email: googleProfile.email },
+    });
+
+    if (
+      existingGoogleUser &&
+      existingEmailUser &&
+      existingGoogleUser.id !== existingEmailUser.id
+    ) {
+      res.status(409).json({
+        status: 'error',
+        error: {
+          code: 'AUTH_GOOGLE_ALREADY_LINKED',
+          message: 'This Google account is already linked to another user.',
+        },
+      });
+      return;
+    }
+
+    const randomPassword = await bcrypt.hash(crypto.randomUUID(), 12);
+    const user =
+      existingGoogleUser ||
+      existingEmailUser
+        ? await prisma.user.update({
+            where: { id: (existingGoogleUser || existingEmailUser)!.id },
+            data: {
+              googleId: googleProfile.googleId,
+              googleEmail: googleProfile.email,
+              avatar:
+                (existingGoogleUser || existingEmailUser)!.avatar || googleProfile.avatar,
+            },
+          })
+        : await prisma.user.create({
+            data: {
+              name: googleProfile.name,
+              email: googleProfile.email,
+              password: randomPassword,
+              passwordUpdatedAt: new Date(),
+              avatar: googleProfile.avatar,
+              googleId: googleProfile.googleId,
+              googleEmail: googleProfile.email,
+            },
+          });
+
+    if (user.twoFactorEnabled) {
+      await issueAndSendTwoFactorCode(user);
+
+      res.json({
+        status: 'success',
+        data: {
+          requiresTwoFactor: true,
+          userId: user.id,
+          message: 'A verification code has been sent to your email',
+        },
+      });
+      return;
+    }
+
+    const token = generateToken(user.id);
+
+    res.json({
+      status: 'success',
+      data: {
+        user: sanitizeUser(user),
+        token,
+      },
+    });
+  } catch (error) {
+    res.status(401).json({
+      status: 'error',
+      error: {
+        code: 'AUTH_GOOGLE_FAILED',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Google authentication failed. Please try again.',
+      },
+    });
+  }
+});
+
+// POST /api/auth/google/link
+router.post('/google/link', authenticate, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  const { credential } = req.body;
+
+  if (!credential || typeof credential !== 'string') {
+    res.status(400).json({
+      status: 'error',
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Google credential is required',
+      },
+    });
+    return;
+  }
+
+  const currentUser = await getAuthenticatedUser(req, res);
+  if (!currentUser) return;
+
+  try {
+    const googleProfile = await verifyGoogleCredential(credential);
+
+    const userWithGoogle = await prisma.user.findUnique({
+      where: { googleId: googleProfile.googleId },
+    });
+
+    if (userWithGoogle && userWithGoogle.id !== currentUser.id) {
+      res.status(409).json({
+        status: 'error',
+        error: {
+          code: 'AUTH_GOOGLE_ALREADY_LINKED',
+          message: 'This Google account is already linked to another user.',
+        },
+      });
+      return;
+    }
+
+    if (normalizeEmail(currentUser.email) !== googleProfile.email) {
+      res.status(400).json({
+        status: 'error',
+        error: {
+          code: 'AUTH_GOOGLE_EMAIL_MISMATCH',
+          message: 'Please choose the Google account that matches your TaskTogether email.',
+        },
+      });
+      return;
+    }
+
+    const user = await prisma.user.update({
+      where: { id: currentUser.id },
+      data: {
+        googleId: googleProfile.googleId,
+        googleEmail: googleProfile.email,
+        avatar: currentUser.avatar || googleProfile.avatar,
+      },
+    });
+
+    res.json({
+      status: 'success',
+      data: {
+        message: 'Google account linked successfully.',
+        user: sanitizeUser(user),
+      },
+    });
+  } catch (error) {
+    res.status(401).json({
+      status: 'error',
+      error: {
+        code: 'AUTH_GOOGLE_FAILED',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Google authentication failed. Please try again.',
+      },
+    });
+  }
+});
+
 
 // POST /api/auth/2fa/verify-login
 router.post('/2fa/verify-login', async (req: Request, res: Response): Promise<void> => {
