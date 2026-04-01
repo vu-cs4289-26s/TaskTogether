@@ -970,7 +970,7 @@ export default function HouseholdDashboardPage() {
           }
         }}
         onSave={handleUpdateEvent}
-        onDelete={handleDeleteEvent}
+        onDelete={isAdmin ? handleDeleteEvent : undefined}
       />
       {/* Event Details Modal */}
       <BaseModal
@@ -993,19 +993,21 @@ export default function HouseholdDashboardPage() {
           </div>
 
           <div className="flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="danger"
-              disabled={!activeActivity || isUpdatingEvent}
-              onClick={async () => {
-                if (!activeActivity) return;
-                // Reuse the same delete flow as the edit modal
-                setEditingActivity(activeActivity);
-                await handleDeleteEvent(activeActivity);
-              }}
-            >
-              Delete
-            </Button>
+            {isAdmin && (
+              <Button
+                type="button"
+                variant="danger"
+                disabled={!activeActivity || isUpdatingEvent}
+                onClick={async () => {
+                  if (!activeActivity) return;
+                  // Reuse the same delete flow as the edit modal
+                  setEditingActivity(activeActivity);
+                  await handleDeleteEvent(activeActivity);
+                }}
+              >
+                Delete
+              </Button>
+            )}
 
             <Button
               type="button"
