@@ -210,9 +210,21 @@ jobs:
             # Strip leading whitespace from .env lines
             sed -i 's/^[[:space:]]*//' .env
             
-            # Build and start production containers
+            # Ensure swap space exists (prevents OOM during builds)
+            if [ ! -f /swapfile ]; then
+              sudo fallocate -l 2G /swapfile
+              sudo chmod 600 /swapfile
+              sudo mkswap /swapfile
+              sudo swapon /swapfile
+              echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+            elif ! swapon --show | grep -q /swapfile; then
+              sudo swapon /swapfile
+            fi
+
+            # Build and start production containers (build sequentially to limit memory usage)
             docker compose -f docker-compose.prod.yml down
-            docker compose -f docker-compose.prod.yml build
+            docker compose -f docker-compose.prod.yml build server
+            docker compose -f docker-compose.prod.yml build client
             docker compose -f docker-compose.prod.yml up -d
             
             # Clean up old images
