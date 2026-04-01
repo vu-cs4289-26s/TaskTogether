@@ -3,7 +3,7 @@ import { authenticate } from '../middleware/auth.js';
 import { requireHouseholdMember, requireAdmin } from '../middleware/authorization.js';
 import { AuthenticatedRequest } from '../types/index.js';
 import prisma from '../lib/prisma.js';
-import { broadcastNotification } from '../lib/notifications.js';
+import { createNotification, broadcastNotification } from '../lib/notifications.js';
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
@@ -441,6 +441,168 @@ router.get(
             res.status(500).json({
                 status: 'error',
                 error: { code: 'SERVER_ERROR', message: 'Failed to load comments' },
+            });
+        }
+    }
+);
+
+//for notifications
+router.put(
+    '/:issueId',
+    requireHouseholdMember,
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+        try {
+            const { issueId } = req.params;
+
+            const issue = await prisma.issue.findFirst({
+                where: { id: issueId, householdId: req.householdId! },
+                select: {
+                    id: true,
+                    reportedById: true,
+                    status: true,
+                    title: true,
+                },
+            });
+
+            if (!issue) {
+                res.status(404).json({
+                    status: 'error',
+                    error: { code: 'NOT_FOUND', message: 'Issue not found' },
+                });
+                return;
+            }
+
+            const isAdmin = req.userRole === 'ADMIN';
+            const isReporter = issue.reportedById === req.userId;
+
+            if (!isAdmin && !isReporter) {
+                res.status(403).json({
+                    status: 'error',
+                    error: {
+                        code: 'FORBIDDEN',
+                        message: 'You can only edit your own issues',
+                    },
+                });
+                return;
+            }
+
+            const {
+                title,
+                description,
+                photoUrl,
+                type,
+                priority,
+                isAnonymous,
+                status, // admin-only
+            } = req.body;
+
+            const data: any = {};
+
+            if (typeof title === 'string') data.title = title.trim();
+
+            if (description === null || typeof description === 'string') {
+                const trimmed = typeof description === 'string' ? description.trim() : null;
+                data.description = trimmed ? trimmed : null;
+            }
+
+            if (photoUrl === null || typeof photoUrl === 'string') data.photoUrl = photoUrl;
+
+            if (type !== undefined) {
+                if (!ISSUE_TYPES.has(type)) {
+                    res.status(400).json({
+                        status: 'error',
+                        error: { code: 'VALIDATION_ERROR', message: 'Invalid issue type' },
+                    });
+                    return;
+                }
+                data.type = type;
+            }
+
+            if (priority !== undefined) {
+                if (!ISSUE_PRIORITIES.has(priority)) {
+                    res.status(400).json({
+                        status: 'error',
+                        error: { code: 'VALIDATION_ERROR', message: 'Invalid priority' },
+                    });
+                    return;
+                }
+                data.priority = priority;
+            }
+
+            if (typeof isAnonymous === 'boolean') data.isAnonymous = isAnonymous;
+
+            if (status !== undefined) {
+                if (!isAdmin) {
+                    res.status(403).json({
+                        status: 'error',
+                        error: {
+                            code: 'ADMIN_REQUIRED',
+                            message: 'Only admins can change status',
+                        },
+                    });
+                    return;
+                }
+
+                data.status = status;
+            }
+
+            if ('title' in data && !data.title) {
+                res.status(400).json({
+                    status: 'error',
+                    error: { code: 'VALIDATION_ERROR', message: 'Title cannot be empty' },
+                });
+                return;
+            }
+
+            const oldStatus = issue.status;
+
+            const updated = await prisma.issue.update({
+                where: { id: issue.id },
+                data,
+                include: {
+                    reportedBy: { select: userSelect },
+                    comments: { include: { user: { select: userSelect } } },
+                },
+            });
+
+            const newStatus = updated.status;
+
+            if (status !== undefined && newStatus !== oldStatus) {
+                if (issue.reportedById !== req.userId) {
+                    createNotification({
+                        userId: issue.reportedById,
+                        householdId: req.householdId!,
+                        type: 'ISSUE_STATUS_CHANGED',
+                        message: `Your issue "${updated.title}" changed from ${oldStatus} to ${newStatus}`,
+                        payload: {
+                            issueId: updated.id,
+                            issueTitle: updated.title,
+                            oldStatus,
+                            newStatus,
+                        },
+                    }).catch(console.error);
+                }
+
+                broadcastNotification({
+                    householdId: req.householdId!,
+                    excludeUserIds: [...new Set([req.userId!, issue.reportedById])],          
+                    type: 'ISSUE_STATUS_CHANGED',
+                    message: `Issue "${updated.title}" status changed from ${oldStatus} to ${newStatus}`,
+                    payload: {
+                        issueId: updated.id,
+                        issueTitle: updated.title,
+                        oldStatus,
+                        newStatus,
+                    },
+                }).catch(console.error);
+            }
+
+            res.json({ status: 'success', data: updated });
+        } catch (err) {
+            console.error(err);
+            res.status(500).json({
+                status: 'error',
+                error: { code: 'SERVER_ERROR', message: 'Failed to update issue' },
             });
         }
     }

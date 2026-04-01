@@ -470,19 +470,11 @@ export default function SettingsPage() {
     'realtime' | 'hourly' | 'daily' | 'weekly'
   >('daily');
 
-  const [_profileVisibility, _setProfileVisibility] = useState<
-    'all' | 'household' | 'private'
-  >('household');
-  const [_showStats, _setShowStats] = useState(true);
-  const [_activityStatus, _setActivityStatus] = useState(true);
-
-  const [defaultHousehold, setDefaultHousehold] = useState<
-    'main' | 'beach' | 'campus' | 'last'
-  >('main');
-  const [_language, _setLanguage] = useState<'en' | 'es' | 'fr' | 'de'>('en');
-  const [timezone, setTimezone] = useState<'est' | 'cst' | 'mst' | 'pst'>('est');
-  const [startWeekOn, setStartWeekOn] = useState<'sunday' | 'monday'>('sunday');
-  const [dateFormat, setDateFormat] = useState<'mdy' | 'dmy' | 'ymd'>('mdy');
+const [_profileVisibility, _setProfileVisibility] = useState<
+  'all' | 'household' | 'private'
+>('household');
+const [_showStats, _setShowStats] = useState(true);
+const [_activityStatus, _setActivityStatus] = useState(true);
 
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const [passwordUpdatedAt, setPasswordUpdatedAt] = useState<string>('');
@@ -497,23 +489,23 @@ export default function SettingsPage() {
   const [twoFactorModalOpen, setTwoFactorModalOpen] = useState(false);
   const [twoFactorMode, setTwoFactorMode] = useState<'enable' | 'disable'>('enable');
 
-  useEffect(() => {
-    async function loadUser() {
-      try {
-        const res = await api.get('/users/me');
-        setPasswordUpdatedAt(res.data?.data?.passwordUpdatedAt || '');
-        setTwoFactorEnabled(Boolean(res.data?.data?.twoFactorEnabled));
-      } catch {
-        setPasswordUpdatedAt('');
-        setTwoFactorEnabled(false);
-      } finally {
-        setPasswordDateLoading(false);
-        setTwoFactorLoading(false);
-      }
+useEffect(() => {
+  async function loadUser() {
+    try {
+      const res = await api.get('/users/me');
+      setPasswordUpdatedAt(res.data?.data?.passwordUpdatedAt || '');
+      setTwoFactorEnabled(Boolean(res.data?.data?.twoFactorEnabled));
+    } catch {
+      setPasswordUpdatedAt('');
+      setTwoFactorEnabled(false);
+    } finally {
+      setPasswordDateLoading(false);
+      setTwoFactorLoading(false);
     }
+  }
 
-    loadUser();
-  }, []);
+  loadUser();
+}, []);
 
   function closeTwoFactorModal() {
     setTwoFactorModalOpen(false);
@@ -601,7 +593,7 @@ export default function SettingsPage() {
     }
   }
 
-  return (
+return (
     <div className="min-h-screen bg-base">
       <AppNavbar />
 
@@ -736,76 +728,7 @@ export default function SettingsPage() {
             noDivider
           />
         </SettingsSection>
-
-        <SettingsSection
-          title="Preferences"
-          description="Customize your TaskTogether experience"
-        >
-          <SettingItem
-            label="Default Household"
-            hint="Which household to show when you log in"
-            right={
-              <select
-                value={defaultHousehold}
-                onChange={(e) =>
-                  setDefaultHousehold(e.target.value as typeof defaultHousehold)
-                }
-                className="min-w-[220px] px-4 py-2 rounded-sm border border-divider bg-surface text-sm text-text-primary focus:outline-none focus:border-sage"
-              >
-                <option value="main">Main Street Apartment</option>
-                <option value="beach">Beach House</option>
-                <option value="campus">Campus Dorm Suite</option>
-                <option value="last">Last visited</option>
-              </select>
-            }
-          />
-          <SettingItem
-            label="Timezone"
-            hint="Used for task deadlines and event times"
-            right={
-              <select
-                value={timezone}
-                onChange={(e) => setTimezone(e.target.value as typeof timezone)}
-                className="min-w-[220px] px-4 py-2 rounded-sm border border-divider bg-surface text-sm text-text-primary focus:outline-none focus:border-sage"
-              >
-                <option value="est">Eastern Time (ET)</option>
-                <option value="cst">Central Time (CT)</option>
-                <option value="mst">Mountain Time (MT)</option>
-                <option value="pst">Pacific Time (PT)</option>
-              </select>
-            }
-          />
-          <SettingItem
-            label="Start Week On"
-            hint="First day of the week in calendars"
-            right={
-              <select
-                value={startWeekOn}
-                onChange={(e) => setStartWeekOn(e.target.value as typeof startWeekOn)}
-                className="min-w-[220px] px-4 py-2 rounded-sm border border-divider bg-surface text-sm text-text-primary focus:outline-none focus:border-sage"
-              >
-                <option value="sunday">Sunday</option>
-                <option value="monday">Monday</option>
-              </select>
-            }
-          />
-          <SettingItem
-            label="Date Format"
-            hint="How dates are displayed"
-            right={
-              <select
-                value={dateFormat}
-                onChange={(e) => setDateFormat(e.target.value as typeof dateFormat)}
-                className="min-w-[220px] px-4 py-2 rounded-sm border border-divider bg-surface text-sm text-text-primary focus:outline-none focus:border-sage"
-              >
-                <option value="mdy">MM/DD/YYYY</option>
-                <option value="dmy">DD/MM/YYYY</option>
-                <option value="ymd">YYYY-MM-DD</option>
-              </select>
-            }
-            noDivider
-          />
-        </SettingsSection>
+        
       </main>
 
       <ChangePasswordModal

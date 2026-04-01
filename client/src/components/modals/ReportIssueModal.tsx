@@ -17,23 +17,33 @@ export type ReportIssueFormValues = {
     photoUrl?: string | null;
 };
 
+type Preview = { id: string; url: string; file: File };
+
 type Props = {
     open: boolean;
     mode?: 'create' | 'edit';
-    initialValue?: Partial<ReportIssueFormValues>;
+    initialValue?: ReportIssueFormValues;
     isSubmitting: boolean;
+    uploading?: boolean;
+    uploadError?: string | null;
+    previews?: Preview[];
+    onAddFiles?: (filesLike: FileList | File[]) => void;
+    onRemovePreview?: (id: string) => void;
     error: string | null;
     onClose: () => void;
-    onSubmit: (input: ReportIssueFormValues, imageFile?: File | null) => void | Promise<void>;
+    onSubmit: (values: ReportIssueFormValues) => void | Promise<void>;
 };
-
-type Preview = { url: string; file: File };
 
 export default function ReportIssueModal({
     open,
-    mode,
+    mode = 'create',
     initialValue,
     isSubmitting,
+    uploading = false,
+    uploadError = null,
+    previews = [],
+    onAddFiles,
+    onRemovePreview,
     error,
     onClose,
     onSubmit,
@@ -55,12 +65,17 @@ export default function ReportIssueModal({
     const [priority, setPriority] = useState<IssuePriority>(defaults.priority);
     const [description, setDescription] = useState(defaults.description);
     const [anonymous, setAnonymous] = useState(defaults.anonymous);
-
     const [localError, setLocalError] = useState<string | null>(null);
+    const [isDragOver, setIsDragOver] = useState(false);
+    const [removeExistingPhoto, setRemoveExistingPhoto] = useState(false);
 
     const fileInputRef = useRef<HTMLInputElement | null>(null);
-    const [isDragOver, setIsDragOver] = useState(false);
-    const [preview, setPreview] = useState<Preview | null>(null);
+
+    const busy = isSubmitting || uploading;
+    const existingPhotoUrl =
+        mode === 'edit' && !removeExistingPhoto
+            ? initialValue?.photoUrl ?? null
+            : null;
 
     useEffect(() => {
         if (!open) return;
@@ -81,55 +96,10 @@ export default function ReportIssueModal({
 
         setLocalError(null);
         setIsDragOver(false);
-
-        setPreview((prev) => {
-            if (prev) URL.revokeObjectURL(prev.url);
-            return null;
-        });
+        setRemoveExistingPhoto(false);
     }, [open, mode, initialValue]);
 
-    useEffect(() => {
-        return () => {
-            if (preview) URL.revokeObjectURL(preview.url);
-        };
-    }, [preview]);
-
-    function validateFile(file: File) {
-        if (!file.type.startsWith('image/')) {
-            return 'Only image files are allowed.';
-        }
-        if (file.size > 10 * 1024 * 1024) {
-            return 'Image must be 10MB or smaller.';
-        }
-        return null;
-    }
-
-    function setSelectedFile(file: File) {
-        const error = validateFile(file);
-        if (error) {
-            setLocalError(error);
-            return;
-        }
-
-        setLocalError(null);
-
-        setPreview((prev) => {
-            if (prev) URL.revokeObjectURL(prev.url);
-            return {
-                file,
-                url: URL.createObjectURL(file),
-            };
-        });
-    }
-
-    function removePreview() {
-        setPreview((prev) => {
-            if (prev) URL.revokeObjectURL(prev.url);
-            return null;
-        });
-    }
-
-    async function submit() {
+    function submit() {
         const trimmedTitle = title.trim();
         if (!trimmedTitle) {
             setLocalError('Issue title is required.');
@@ -138,17 +108,19 @@ export default function ReportIssueModal({
 
         setLocalError(null);
 
-        await onSubmit(
-            {
-                title: trimmedTitle,
-                type,
-                priority,
-                description: description.trim() ? description.trim() : undefined,
-                anonymous,
-                photoUrl: null,
-            },
-            preview?.file ?? null
-        );
+        onSubmit({
+            title: trimmedTitle,
+            type,
+            priority,
+            description: description.trim() ? description.trim() : undefined,
+            anonymous,
+            photoUrl:
+                mode === 'edit'
+                    ? removeExistingPhoto
+                        ? null
+                        : initialValue?.photoUrl ?? null
+                    : null,
+        });
     }
 
     return (
@@ -157,7 +129,7 @@ export default function ReportIssueModal({
             ariaLabel={mode === 'edit' ? 'Edit issue' : 'Report an issue'}
             title={mode === 'edit' ? 'Edit Issue' : 'Report an Issue'}
             subtitle={mode === 'edit' ? undefined : 'Report a household issue or conflict'}
-            isBlocking={isSubmitting}
+            isBlocking={busy}
             onClose={onClose}
             maxWidthClassName="max-w-[560px]"
         >
@@ -167,7 +139,7 @@ export default function ReportIssueModal({
                         id="issue-title"
                         value={title}
                         onChange={(e) => setTitle(e.target.value)}
-                        disabled={isSubmitting}
+                        disabled={busy}
                         placeholder="e.g., Broken dishwasher"
                         className={inputClass}
                     />
@@ -178,7 +150,7 @@ export default function ReportIssueModal({
                         id="issue-type"
                         value={type}
                         onChange={(e) => setType(e.target.value as IssueType)}
-                        disabled={isSubmitting}
+                        disabled={busy}
                         className={inputClass}
                     >
                         <option value="maintenance">Maintenance</option>
@@ -200,21 +172,21 @@ export default function ReportIssueModal({
                             selected={priority === 'urgent'}
                             tone="high"
                             onClick={() => setPriority('urgent')}
-                            disabled={isSubmitting}
+                            disabled={busy}
                         />
                         <PriorityPill
                             label="Medium"
                             selected={priority === 'medium'}
                             tone="medium"
                             onClick={() => setPriority('medium')}
-                            disabled={isSubmitting}
+                            disabled={busy}
                         />
                         <PriorityPill
                             label="Low"
                             selected={priority === 'low'}
                             tone="low"
                             onClick={() => setPriority('low')}
-                            disabled={isSubmitting}
+                            disabled={busy}
                         />
                     </div>
                 </div>
@@ -224,7 +196,7 @@ export default function ReportIssueModal({
                         id="issue-description"
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
-                        disabled={isSubmitting}
+                        disabled={busy}
                         placeholder="Please describe the issue in detail..."
                         className={`${inputClass} min-h-[120px] resize-y`}
                     />
@@ -241,24 +213,26 @@ export default function ReportIssueModal({
                             'relative rounded-sm border-2 border-dashed p-5 text-center cursor-pointer transition',
                             'bg-base border-divider hover:border-sage',
                             isDragOver ? 'border-sage bg-sage/5' : '',
-                            isSubmitting ? 'opacity-60 cursor-not-allowed' : '',
+                            busy ? 'opacity-60 cursor-not-allowed' : '',
                         ].join(' ')}
                         onClick={() => {
-                            if (isSubmitting) return;
+                            if (busy) return;
                             fileInputRef.current?.click();
                         }}
                         onDragOver={(e) => {
                             e.preventDefault();
-                            if (isSubmitting) return;
+                            if (busy) return;
                             setIsDragOver(true);
                         }}
                         onDragLeave={() => setIsDragOver(false)}
                         onDrop={(e) => {
                             e.preventDefault();
-                            if (isSubmitting) return;
+                            if (busy) return;
                             setIsDragOver(false);
-                            const file = e.dataTransfer.files?.[0];
-                            if (file) setSelectedFile(file);
+                            if (e.dataTransfer.files && onAddFiles) {
+                                setRemoveExistingPhoto(false);
+                                onAddFiles(e.dataTransfer.files);
+                            }
                         }}
                     >
                         <input
@@ -267,11 +241,12 @@ export default function ReportIssueModal({
                             accept="image/*"
                             className="hidden"
                             onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) setSelectedFile(file);
+                                if (!e.target.files || !onAddFiles) return;
+                                setRemoveExistingPhoto(false);
+                                onAddFiles(e.target.files);
                                 e.currentTarget.value = '';
                             }}
-                            disabled={isSubmitting}
+                            disabled={busy}
                         />
 
                         <div className="mx-auto mb-2 w-9 h-9 text-sage">
@@ -290,27 +265,61 @@ export default function ReportIssueModal({
                         </div>
 
                         <div className="text-sm font-semibold text-sage">
-                            Click to upload or drag &amp; drop
+                            {mode === 'edit' ? 'Click to replace or drag & drop' : 'Click to upload or drag & drop'}
                         </div>
                         <div className="text-xs text-text-secondary mt-1">
                             PNG, JPG, HEIC up to 10MB
                         </div>
                     </div>
 
-                    {preview && (
-                        <div className="flex flex-wrap gap-2">
-                            <div className="relative w-[72px] h-[72px] rounded-sm overflow-hidden border border-divider bg-surface">
-                                <img src={preview.url} alt="preview" className="w-full h-full object-cover" />
+                    {mode === 'edit' && existingPhotoUrl && previews.length === 0 && (
+                        <div className="flex flex-col gap-2">
+                            <div className="text-xs text-text-secondary">Current photo</div>
+
+                            <div className="relative w-[96px] h-[96px] rounded-sm overflow-hidden border border-divider bg-surface">
+                                <img
+                                    src={existingPhotoUrl}
+                                    alt="Current issue photo"
+                                    className="w-full h-full object-cover"
+                                />
                                 <button
                                     type="button"
-                                    onClick={removePreview}
+                                    onClick={() => setRemoveExistingPhoto(true)}
                                     className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 text-white text-[11px] flex items-center justify-center hover:bg-urgent"
-                                    aria-label="Remove photo"
-                                    disabled={isSubmitting}
+                                    aria-label="Remove current photo"
+                                    disabled={busy}
                                 >
                                     ✕
                                 </button>
                             </div>
+                        </div>
+                    )}
+
+                    {/* {mode === 'edit' && previews.length > 0 && (
+                        <div className="text-xs text-text-secondary">
+                            New photo selected. Saving will replace the current image.
+                        </div>
+                    )} */}
+
+                    {previews.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                            {previews.map((p) => (
+                                <div
+                                    key={p.id}
+                                    className="relative w-[72px] h-[72px] rounded-sm overflow-hidden border border-divider bg-surface"
+                                >
+                                    <img src={p.url} alt="preview" className="w-full h-full object-cover" />
+                                    <button
+                                        type="button"
+                                        onClick={() => onRemovePreview?.(p.id)}
+                                        className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 text-white text-[11px] flex items-center justify-center hover:bg-urgent"
+                                        aria-label="Remove photo"
+                                        disabled={busy}
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+                            ))}
                         </div>
                     )}
                 </div>
@@ -321,7 +330,7 @@ export default function ReportIssueModal({
                         type="checkbox"
                         checked={anonymous}
                         onChange={(e) => setAnonymous(e.target.checked)}
-                        disabled={isSubmitting}
+                        disabled={busy}
                         className="w-5 h-5 cursor-pointer accent-sage"
                     />
                     <label htmlFor="issue-anonymous" className="text-sm text-text-primary">
@@ -329,21 +338,27 @@ export default function ReportIssueModal({
                     </label>
                 </div>
 
-                {(localError || error) && (
-                    <div className="text-sm text-urgent">{localError ?? error}</div>
+                {(localError || uploadError || error) && (
+                    <div className="text-sm text-urgent">{localError ?? uploadError ?? error}</div>
                 )}
 
                 <div className="flex items-center gap-4 justify-end mt-2">
-                    <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>
+                    <Button variant="secondary" onClick={onClose} disabled={busy}>
                         Cancel
                     </Button>
                     <Button
                         variant="primary"
                         lift
                         onClick={submit}
-                        disabled={isSubmitting || !title.trim()}
+                        disabled={busy || !title.trim()}
                     >
-                        {isSubmitting ? 'Saving…' : mode === 'edit' ? 'Save Changes' : 'Submit Report'}
+                        {uploading
+                            ? 'Uploading…'
+                            : isSubmitting
+                                ? 'Saving…'
+                                : mode === 'edit'
+                                    ? 'Save Changes'
+                                    : 'Submit Report'}
                     </Button>
                 </div>
             </div>
