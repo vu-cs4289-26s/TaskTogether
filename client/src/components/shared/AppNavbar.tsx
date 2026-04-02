@@ -217,21 +217,7 @@ export default function AppNavbar(props: AppNavbarProps) {
             )}
           </li>
 
-          {/* Wiki link — always visible, passes household context if available */}
-          <li>
-            <Link
-              href={currentHouseholdId ? `/wiki?household=${currentHouseholdId}` : '/wiki'}
-              className={`no-underline font-medium transition-colors hover:text-sage ${
-                pathname.startsWith('/wiki')
-                  ? 'text-sage font-semibold'
-                  : 'text-text-primary'
-              }`}
-            >
-              Wiki
-            </Link>
-          </li>
-
-          {/* Notifications bell */}
+      {/* Notifications bell */}
           <li className="relative" ref={notifDropdownRef}>
             <button
               type="button"
@@ -398,21 +384,6 @@ export default function AppNavbar(props: AppNavbarProps) {
                 </Link>
               </li>
             ))}
-
-            {/* Wiki — always visible, passes household context if available */}
-            <li className="h-px bg-divider my-2" />
-            <li>
-              <Link
-                href={currentHouseholdId ? `/wiki?household=${currentHouseholdId}` : '/wiki'}
-                className={`block py-3 px-3 rounded-sm no-underline font-medium transition-colors hover:bg-base ${
-                  pathname.startsWith('/wiki')
-                    ? 'text-sage bg-soft-highlight'
-                    : 'text-text-primary'
-                }`}
-              >
-                Household Wiki
-              </Link>
-            </li>
 
             <li className="h-px bg-divider my-2" />
 

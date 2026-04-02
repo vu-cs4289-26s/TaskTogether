@@ -1,16 +1,13 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
-import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import AppNavbar from "@/components/shared/AppNavbar";
-import { getHouseholdApi, listHouseholdsApi } from "@/lib/households.api";
+import { getHouseholdApi } from "@/lib/households.api";
 import { listWikiSectionsApi, updateWikiSectionApi } from "@/lib/wiki.api";
-import type { Household } from "@/types/households";
 import type { WikiSection } from "@/types/wiki";
-import { Pencil, X, Save, Loader2 } from "lucide-react";
-import { get } from "http";
+import { Pencil, X, Save, Loader2, ArrowLeft } from "lucide-react";
 
 // Lazy-load the editor so SSR doesn't choke on ProseMirror DOM APIs
 const RichTextEditor = dynamic(
@@ -23,8 +20,8 @@ const RichTextEditor = dynamic(
   },
 );
 
-//TODO: instead of hardcoding these defaults, we should have an interface for managing the sections (add/remove/reorder) 
-// and persist that in the backend. For now this is fine since the wiki is pretty new and we want to avoid extra complexity, 
+//TODO: instead of hardcoding these defaults, we should have an interface for managing the sections (add/remove/reorder)
+// and persist that in the backend. For now this is fine since the wiki is pretty new and we want to avoid extra complexity,
 // but eventually we'll want to build that out.
 const DEFAULT_SECTIONS = [
   { slug: "garbage", title: "Garbage & Recycling" },
@@ -36,32 +33,13 @@ const DEFAULT_SECTIONS = [
   { slug: "misc", title: "Miscellaneous" },
 ];
 
-type SectionSlug = (typeof DEFAULT_SECTIONS)[number]["slug"];
-
-export default function WikiPage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen bg-base">
-          <AppNavbar />
-          <div className="max-w-[1400px] mx-auto px-6 py-12 text-text-secondary">
-            Loading...
-          </div>
-        </div>
-      }
-    >
-      <WikiPageContent />
-    </Suspense>
-  );
-}
-
-function WikiPageContent() {
-  const searchParams = useSearchParams();
-  const householdId = searchParams.get("household");
+export default function HouseholdWikiPage() {
+  const params = useParams<{ id: string }>();
+  const router = useRouter();
+  const householdId = params?.id;
 
   const [active, setActive] = useState<string>("garbage");
-  const [households, setHouseholds] = useState<Household[]>([]);
-  const [householdsLoading, setHouseholdsLoading] = useState(!householdId);
+  const [householdName, setHouseholdName] = useState<string>("");
 
   // Wiki data
   const [sections, setSections] = useState<WikiSection[]>([]);
@@ -69,7 +47,6 @@ function WikiPageContent() {
   const [editing, setEditing] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
-  const [householdName, setHouseholdName] = useState<string>("");
 
   const sectionSlugs = useMemo(
     () =>
@@ -79,36 +56,21 @@ function WikiPageContent() {
     [sections],
   );
 
-  // Fetch households for the picker when no household is selected
-  useEffect(() => {
-    if (householdId) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await listHouseholdsApi();
-        if (!cancelled) setHouseholds(data);
-      } catch {
-        // gracefully handle
-      } finally {
-        if (!cancelled) setHouseholdsLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [householdId]);
-
-  // Fetch wiki sections and household info when household changes
+  // Fetch wiki sections and household info
   useEffect(() => {
     if (!householdId) return;
     let cancelled = false;
     (async () => {
       setSectionsLoading(true);
       try {
-        const data = await listWikiSectionsApi(householdId);
-        const name = await getHouseholdApi(householdId).then((res) => res.name);
-        if (!cancelled) setSections(data);
-        if (!cancelled) setHouseholdName(name ?? "");
+        const [data, household] = await Promise.all([
+          listWikiSectionsApi(householdId),
+          getHouseholdApi(householdId),
+        ]);
+        if (!cancelled) {
+          setSections(data);
+          setHouseholdName(household?.name ?? "");
+        }
       } catch {
         // gracefully handle
       } finally {
@@ -206,47 +168,6 @@ function WikiPageContent() {
     setDrafts({});
   }, [householdId, sections, drafts, saveSection]);
 
-  // Show "pick a household" when no household is selected
-  if (!householdId) {
-    return (
-      <div className="min-h-screen bg-base">
-        <AppNavbar />
-        <div className="max-w-[600px] mx-auto px-6 py-16">
-          <div className="bg-surface border border-divider rounded-md p-8 text-center">
-            <h1 className="text-2xl font-heading font-bold text-text-primary mb-2">
-              Household Wiki
-            </h1>
-            <p className="text-text-secondary mb-6">
-              Please select a household to view its wiki.
-            </p>
-
-            {householdsLoading ? (
-              <p className="text-sm text-text-secondary">
-                Loading households...
-              </p>
-            ) : households.length === 0 ? (
-              <p className="text-sm text-text-secondary">
-                You are not a member of any households yet.
-              </p>
-            ) : (
-              <div className="flex flex-col gap-2">
-                {households.map((h) => (
-                  <Link
-                    key={h.id}
-                    href={`/wiki?household=${h.id}`}
-                    className="block px-4 py-3 rounded-sm border border-divider no-underline text-text-primary font-medium transition-all hover:bg-base hover:border-sage hover:text-sage"
-                  >
-                    {h.name}
-                  </Link>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   function scrollTo(id: string) {
     document
       .getElementById(id)
@@ -267,6 +188,22 @@ function WikiPageContent() {
           updatedBy: null,
         }));
 
+  if (!householdId) {
+    return (
+      <div className="min-h-screen bg-base">
+        <AppNavbar />
+        <div className="max-w-[600px] mx-auto px-6 py-16">
+          <div className="bg-surface border border-divider rounded-md p-8 text-center">
+            <h1 className="text-2xl font-heading font-bold text-text-primary mb-2">
+              Household Wiki
+            </h1>
+            <p className="text-text-secondary">Invalid household ID.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-base">
       <AppNavbar />
@@ -275,10 +212,20 @@ function WikiPageContent() {
       <div className="bg-surface border-b border-divider">
         <div className="max-w-[1400px] mx-auto px-6 py-10 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
           <div>
-            <h1 className="text-[32px] font-heading font-bold text-text-primary">
-              Household Wiki for {householdName}
-            </h1>
-            <p className="mt-1 text-sm text-text-secondary">
+            <div className="flex items-center gap-3 mb-2">
+              <button
+                type="button"
+                onClick={() => router.push(`/households/${householdId}`)}
+                className="p-2 rounded-sm text-text-secondary hover:text-text-primary hover:bg-base transition-colors"
+                title="Back to household"
+              >
+                <ArrowLeft size={20} />
+              </button>
+              <h1 className="text-[32px] font-heading font-bold text-text-primary">
+                Household Wiki for {householdName}
+              </h1>
+            </div>
+            <p className="text-sm text-text-secondary">
               Shared knowledge base for your household
             </p>
           </div>
