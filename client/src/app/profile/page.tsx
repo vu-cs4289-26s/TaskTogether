@@ -20,6 +20,7 @@ import type { Household } from '@/types/households';
 import type { Task, UpdateTaskInput } from '@/types/tasks';
 import { getAvatarColor } from '@/types/households';
 import { isTaskCompleted } from '@/lib/task-helpers';
+import { loadProfileActivities, saveProfileActivities } from '@/lib/profileActivities';
 import TaskListPanel from '@/components/tasks/TaskListPanel';
 import TaskCompletionDetailsModal from '@/components/tasks/TaskCompletionDetailsModal';
 import CompleteTaskModal from '@/components/modals/CompleteTaskModal';
@@ -255,8 +256,9 @@ export default function ProfilePage() {
   const [calMonth, setCalMonth] = useState(() => new Date().getMonth());
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
 
-  // local profile events (no backend)
+  // Personal profile events are persisted locally per signed-in user.
   const [activities, setActivities] = useState<Activity[]>([]);
+  const [profileActivitiesLoaded, setProfileActivitiesLoaded] = useState(false);
 
   // modal state (create)
   const [isAddEventOpen, setIsAddEventOpen] = useState(false);
@@ -337,6 +339,22 @@ export default function ProfilePage() {
       .filter((a) => dateKeyLocal(new Date(a.scheduledAt)) === key)
       .sort((a, b) => +new Date(a.scheduledAt) - +new Date(b.scheduledAt));
   }, [activities, selectedDate]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setActivities([]);
+      setProfileActivitiesLoaded(false);
+      return;
+    }
+
+    setActivities(loadProfileActivities(user.id));
+    setProfileActivitiesLoaded(true);
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id || !profileActivitiesLoaded) return;
+    saveProfileActivities(user.id, activities);
+  }, [activities, user?.id, profileActivitiesLoaded]);
 
   async function handleCreateEvent(input: EventDetailInput) {
     try {

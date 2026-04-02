@@ -6,7 +6,8 @@ import ReportIssueModal, { type ReportIssueFormValues } from '@/components/modal
 import IssueDetailPanel from './IssueDetailPanel';
 import { useRouter } from 'next/navigation';
 import IssueDeleteModal from './IssueDeleteModal';
-import useDeleteFlow from '@/hook/useDeleteFlow';
+import useDeleteFlow from '@/hooks/useDeleteFlow';
+import { uploadImageApi } from '@/lib/upload.api';
 
 import {
     createIssueApi,
@@ -21,6 +22,13 @@ import IssueModalHeader from '@/components/issues/IssueHeaderModal';
 import { createIssueCommentApi } from '@/lib/issues.api';
 
 import { issueToForm, toUpdateIssueInput } from '@/lib/issues-form';
+import { clear } from 'console';
+
+type Preview = { id: string; url: string; file: File };
+
+function uid() {
+    return Math.random().toString(36).slice(2, 10);
+}
 
 type Props = {
     householdId: string;
@@ -48,6 +56,11 @@ export default function IssuesSection({ householdId, isAdmin, currentUserId, ini
     const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
     const [isDetailOpen, setIsDetailOpen] = useState(false);
 
+    //image upload state
+    const [previews, setPreviews] = useState<Preview[]>([]);
+    const [uploading, setUploading] = useState(false);
+    const [uploadError, setUploadError] = useState<string | null>(null);
+
     const router = useRouter();
 
     // delete modal
@@ -61,6 +74,8 @@ export default function IssuesSection({ householdId, isAdmin, currentUserId, ini
         closeDelete,
         forceCloseDelete,
     } = useDeleteFlow<Issue>();
+
+    const busy = isSubmitting || uploading;
 
 
     function canEditIssue(issue: Issue | null) {
@@ -110,6 +125,45 @@ export default function IssuesSection({ householdId, isAdmin, currentUserId, ini
         setSubmitError(null);
     }
 
+    //photo image upload
+    function validateFiles(files: File[]) {
+        const ok: File[] = [];
+        for (const f of files) {
+            if (!f.type.startsWith('image/')) continue;
+            if (f.size > 10 * 1024 * 1024) continue; // 10 MB
+            ok.push(f);
+        }
+        return ok;
+    }
+
+    function addFiles(filesLike: FileList | File[]) {
+        const files = validateFiles(Array.from(filesLike));
+        if (files.length === 0) return;
+
+        for (const p of previews) URL.revokeObjectURL(p.url);
+
+        const file = files[0];
+        const url = URL.createObjectURL(file);
+
+        setPreviews([{ id: uid(), url, file }]);
+        setUploadError(null);
+    }
+
+    function removePreview(id: string) {
+        setPreviews((prev) => {
+            const found = prev.find((p) => p.id === id);
+            if (found) URL.revokeObjectURL(found.url);
+            return prev.filter((p) => p.id !== id);
+        });
+    }
+
+
+    function clearImageState() {
+        previews.forEach((p) => URL.revokeObjectURL(p.url));
+        setPreviews([]);
+        setUploadError(null);
+    }
+
     //updated for delete modal!
     //for delete modal hook flow
     async function handleDelete(issueId: string) {
@@ -140,6 +194,23 @@ export default function IssuesSection({ householdId, isAdmin, currentUserId, ini
         try {
             setIsSubmitting(true);
             setSubmitError(null);
+            setUploadError(null);
+
+            let photoUrl: string | null = null;
+
+            if (previews.length > 0) {
+                try {
+                    setUploading(true);
+                    photoUrl = await uploadImageApi(previews[0].file);
+                } catch (err) {
+                    setUploadError(
+                        err instanceof Error ? err.message : 'Image upload failed'
+                    );
+                    return;
+                } finally {
+                    setUploading(false);
+                }
+            }
 
             const created = await createIssueApi(householdId, {
                 title: values.title,
@@ -147,12 +218,12 @@ export default function IssuesSection({ householdId, isAdmin, currentUserId, ini
                 priority: values.priority,
                 description: values.description,
                 anonymous: values.anonymous,
-                photoUrl: null, // until wire photos
+                photoUrl,
             });
 
             setIssues((prev) => [created, ...prev]);
             setIsReportOpen(false);
-
+            clearImageState();
         } catch (e) {
             setSubmitError(e instanceof Error ? e.message : 'Failed to submit issue.');
         } finally {
@@ -166,8 +237,27 @@ export default function IssuesSection({ householdId, isAdmin, currentUserId, ini
         try {
             setIsSubmitting(true);
             setSubmitError(null);
+            setUploadError(null);
 
-            const payload = toUpdateIssueInput(values);
+            let photoUrl: string | null = values.photoUrl ?? editTarget.photoUrl ?? null;
+            if (previews.length > 0) {
+                try {
+                    setUploading(true);
+                    photoUrl = await uploadImageApi(previews[0].file);
+                } catch (err) {
+                    setUploadError(
+                        err instanceof Error ? err.message : 'Image upload failed'
+                    );
+                    return;
+                } finally {
+                    setUploading(false);
+                }
+            }
+
+            const payload = {
+                ...toUpdateIssueInput(values),
+                photoUrl,
+            };
 
             const updated = await updateIssueApi(householdId, editTarget.id, payload);
 
@@ -176,12 +266,14 @@ export default function IssuesSection({ householdId, isAdmin, currentUserId, ini
 
             setIsEditOpen(false);
             setEditTarget(null);
+            clearImageState();
         } catch (e) {
             setSubmitError(e instanceof Error ? e.message : 'Failed to update issue.');
         } finally {
             setIsSubmitting(false);
         }
     }
+
 
     // for comment section
     async function handleAddComment(issueId: string, content: string) {
@@ -258,11 +350,18 @@ export default function IssuesSection({ householdId, isAdmin, currentUserId, ini
                     key="create-issue"
                     open={true}
                     isSubmitting={isSubmitting}
+                    uploading={uploading}
+                    uploadError={uploadError}
+                    previews={previews}
+                    onAddFiles={addFiles}
+                    onRemovePreview={removePreview}
                     error={submitError}
                     onClose={() => {
-                        if (isSubmitting) return;
+                        if (isSubmitting || uploading) return;
                         setIsReportOpen(false);
                         setSubmitError(null);
+                        setUploadError(null);
+                        clearImageState();
                     }}
                     onSubmit={handleCreate}
                 />
@@ -275,12 +374,19 @@ export default function IssuesSection({ householdId, isAdmin, currentUserId, ini
                     mode="edit"
                     initialValue={issueToForm(editTarget)}
                     isSubmitting={isSubmitting}
+                    uploading={uploading}
+                    uploadError={uploadError}
+                    previews={previews}
+                    onAddFiles={addFiles}
+                    onRemovePreview={removePreview}
                     error={submitError}
                     onClose={() => {
                         if (isSubmitting) return;
                         setIsEditOpen(false);
                         setEditTarget(null);
                         setSubmitError(null);
+                        setUploadError(null);
+                        clearImageState();
                     }}
                     onSubmit={handleEditSubmit}
                 />

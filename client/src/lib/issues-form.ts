@@ -50,6 +50,7 @@ export function issueToForm(issue: Issue): ReportIssueFormValues {
         priority: dbPriorityToUi(issue.priority),
         description: issue.description ?? '',
         anonymous: Boolean(issue.isAnonymous),
+        photoUrl: issue.photoUrl ?? null,
     };
 }
 

@@ -19,8 +19,10 @@ import IssueCard from '@/components/issues/IssueCard';
 import IssueModalHeader from '@/components/issues/IssueHeaderModal';
 import { humanizeEnum, statusBadgeClasses } from '@/lib/issues-display';
 import { issueToForm, toUpdateIssueInput } from '@/lib/issues-form';
-import useDeleteFlow from '@/hook/useDeleteFlow';
+import useDeleteFlow from '@/hooks/useDeleteFlow';
+import useImageUpload from '@/hooks/useImageUpload';
 import { createIssueCommentApi } from '@/lib/issues.api';
+import { uploadImageApi } from '@/lib/upload.api';
 
 export default function IssuesPage() {
     const router = useRouter();
@@ -85,6 +87,13 @@ export default function IssuesPage() {
 
     const currentUserId = user?.id ?? null;
     const isAdmin = household?.myRole === 'ADMIN';
+
+    //image upload
+    const {
+        previews, uploading, setUploading, uploadError, setUploadError,
+        addFiles, removePreview, clearPreviews,
+    } = useImageUpload(1);
+    const busy = uploading || isSubmitting;
 
     const loadHouseholdData = useCallback(async () => {
         if (!householdId) {
@@ -198,23 +207,28 @@ export default function IssuesPage() {
     }
 
     function handleOpenCreate() {
+        clearPreviews();
         setIsDetailOpen(false);
         setSelectedIssue(null);
         setIsEditOpen(false);
         setEditTarget(null);
         setSubmitError(null);
+        setUploadError(null);
         setIsReportOpen(true);
     }
 
     function handleEditClick(issue: Issue) {
         if (!canEditIssue(issue)) return;
 
+        clearPreviews();
+        setUploadError(null);
         setSelectedIssue(issue);
         setEditTarget(issue);
         setIsDetailOpen(false);
         setIsEditOpen(true);
         setSubmitError(null);
     }
+
 
     async function handleStatusChange(issueId: string, status: IssueStatus) {
         if (!householdId) return;
@@ -260,18 +274,36 @@ export default function IssuesPage() {
         try {
             setIsSubmitting(true);
             setSubmitError(null);
+            setUploadError(null);
+
+            let photoUrl: string | null = null;
+
+            if (previews.length > 0) {
+                try {
+                    setUploading(true);
+                    photoUrl = await uploadImageApi(previews[0].file);
+                } catch (err) {
+                    setUploadError(
+                        err instanceof Error ? err.message : 'Image upload failed'
+                    );
+                    return;
+                } finally {
+                    setUploading(false);
+                }
+            }
 
             const created = await createIssueApi(householdId, {
-                title: values.title.trim(),
+                title: values.title,
                 type: values.type,
                 priority: values.priority,
-                description: values.description?.trim() || '',
+                description: values.description,
                 anonymous: values.anonymous,
+                photoUrl,
             });
 
             setIssues((prev) => [created, ...prev]);
             setIsReportOpen(false);
-            setSubmitError(null);
+            clearPreviews();
         } catch (e) {
             setSubmitError(e instanceof Error ? e.message : 'Failed to create issue.');
         } finally {
@@ -285,13 +317,36 @@ export default function IssuesPage() {
         try {
             setIsSubmitting(true);
             setSubmitError(null);
+            setUploadError(null);
 
-            const updated = await updateIssueApi(householdId, editTarget.id, toUpdateIssueInput(values));
+            let photoUrl: string | null = values.photoUrl ?? editTarget.photoUrl ?? null;
+
+            if (previews.length > 0) {
+                try {
+                    setUploading(true);
+                    photoUrl = await uploadImageApi(previews[0].file);
+                } catch (err) {
+                    setUploadError(
+                        err instanceof Error ? err.message : 'Image upload failed'
+                    );
+                    return;
+                } finally {
+                    setUploading(false);
+                }
+            }
+
+            const payload = {
+                ...toUpdateIssueInput(values),
+                photoUrl,
+            };
+
+            const updated = await updateIssueApi(householdId, editTarget.id, payload);
 
             setIssues((prev) => prev.map((issue) => (issue.id === updated.id ? updated : issue)));
             setSelectedIssue(updated);
             setEditTarget(updated);
             setIsEditOpen(false);
+            clearPreviews();
             setSubmitError(null);
         } catch (e) {
             setSubmitError(e instanceof Error ? e.message : 'Failed to update issue.');
@@ -703,11 +758,18 @@ export default function IssuesPage() {
                     key="create-issue"
                     open={true}
                     isSubmitting={isSubmitting}
+                    uploading={uploading}
+                    uploadError={uploadError}
+                    previews={previews}
+                    onAddFiles={addFiles}
+                    onRemovePreview={removePreview}
                     error={submitError}
                     onClose={() => {
-                        if (isSubmitting) return;
+                        if (busy) return;
                         setIsReportOpen(false);
                         setSubmitError(null);
+                        setUploadError(null);
+                        clearPreviews();
                     }}
                     onSubmit={handleCreate}
                 />
@@ -720,16 +782,23 @@ export default function IssuesPage() {
                     mode="edit"
                     initialValue={issueToForm(editTarget)}
                     isSubmitting={isSubmitting}
+                    uploading={uploading}
+                    uploadError={uploadError}
+                    previews={previews}
+                    onAddFiles={addFiles}
+                    onRemovePreview={removePreview}
                     error={submitError}
                     onClose={() => {
-                        if (isSubmitting) return;
+                        if (busy) return;
                         setIsEditOpen(false);
                         setEditTarget(null);
                         setSubmitError(null);
+                        setUploadError(null);
+                        clearPreviews();
                     }}
                     onSubmit={handleEditSubmit}
                 />
-            )}
+            )}s
 
             <BaseModal
                 open={isDetailOpen && Boolean(selectedIssue)}

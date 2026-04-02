@@ -1,20 +1,38 @@
 export async function sendEmail(options: {
-    to: string; 
+    to: string;
     subject: string;
     html: string;
-    text?: string; }) : Promise<void> {
+    text?: string;
+    from?: string;
+}): Promise<void> {
+    const smtpHost = process.env.SMTP_HOST;
+    const smtpPort = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : undefined;
+    const smtpUser = process.env.SMTP_USER;
+    const smtpPass = process.env.SMTP_PASS;
+    const from = options.from || `"TaskTogether" <${smtpUser}>`;
+
+    if (!smtpHost || !smtpPort || !smtpUser || !smtpPass) {
+        console.log(`\n[TaskTogether Email]`);
+        console.log(`To: ${options.to}`);
+        console.log(`Subject: ${options.subject}`);
+        if (options.text) console.log(`Body: ${options.text}`);
+        console.log();
+        return;
+    }
+
     const nodemailer = await import("nodemailer");
     const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: Number(process.env.SMTP_PORT),
+        host: smtpHost,
+        port: smtpPort,
+        secure: smtpPort === 465,
         auth: {
-            user: process.env.SMTP_USER,
-            pass: process.env.SMTP_PASS,
+            user: smtpUser,
+            pass: smtpPass,
         },
     });
 
     await transporter.sendMail({
-        from: `"TaskTogether" <${process.env.SMTP_USER}>`,
+        from,
         to: options.to,
         subject: options.subject,
         html: options.html,

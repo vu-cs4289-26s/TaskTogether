@@ -16,6 +16,7 @@ interface AuthContextType {
     user: User | null;
     loading: boolean;
     login: (email: string, password: string) => Promise<LoginResult>;
+    loginWithGoogle: (credential: string) => Promise<LoginResult>;
     verifyTwoFactorLogin: (userId: string, code: string) => Promise<void>;
     register: (name: string, email: string, password: string) => Promise<void>;
     logout: () => void;
@@ -96,6 +97,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(res.data.data.user);
     }, []);
 
+    const loginWithGoogle = useCallback(async (credential: string): Promise<LoginResult> => {
+        const res = await api.post('/auth/google', { credential });
+
+        if (res.data?.data?.requiresTwoFactor) {
+            return {
+                requires2FA: true,
+                userId: res.data.data.userId,
+            };
+        }
+
+        localStorage.setItem('token', res.data.data.token);
+        setUser(res.data.data.user);
+        return { requires2FA: false };
+    }, []);
+
     const register = useCallback(async (name: string, email: string, password: string) => {
         if (USE_MOCK) {
             await registerMock(name, email, password);
@@ -122,7 +138,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return (
         <AuthContext.Provider
-            value={{ user, loading, login, verifyTwoFactorLogin, register, logout }}
+            value={{ user, loading, login, loginWithGoogle, verifyTwoFactorLogin, register, logout }}
         >
             {children}
         </AuthContext.Provider>

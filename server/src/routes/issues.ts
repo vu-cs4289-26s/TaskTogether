@@ -1,24 +1,18 @@
 import { Router, Response } from 'express';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate } from '../middleware/authentication.js';
 import { requireHouseholdMember, requireAdmin } from '../middleware/authorization.js';
 import { AuthenticatedRequest } from '../types/index.js';
 import prisma from '../lib/prisma.js';
-import { broadcastNotification } from '../lib/notifications.js';
+import { createNotification, broadcastNotification } from '../lib/notifications.js';
+import { sendError, sendSuccess } from '../utils/responses.js';
+import { userSelect } from '../utils/selects.js';
+import { requireString, isOneOf } from '../utils/validation.js';
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
 
-const userSelect = { id: true, name: true, email: true, avatar: true } as const;
-
-const ISSUE_TYPES = new Set([
-    'MAINTENANCE',
-    'HOUSEMATE_CONFLICT',
-    'NOISE_COMPLAINT',
-    'CLEANLINESS',
-    'OTHER',
-]);
-
-const ISSUE_PRIORITIES = new Set(['URGENT', 'MEDIUM', 'LOW']);
+const ISSUE_TYPES = ['MAINTENANCE', 'HOUSEMATE_CONFLICT', 'NOISE_COMPLAINT', 'CLEANLINESS', 'OTHER'] as const;
+const ISSUE_PRIORITIES = ['URGENT', 'MEDIUM', 'LOW'] as const;
 
 // POST / — Create an issue (any household member)
 // TODO: Validate title is required and non-empty
@@ -32,34 +26,26 @@ router.post(
         try {
             const { title, description, photoUrl, type, priority, isAnonymous } = req.body;
 
-            if (!title || !title.trim()) {
-                res.status(400).json({
-                    status: 'error',
-                    error: { code: 'VALIDATION_ERROR', message: 'Title is required' },
-                });
+            const trimmedTitle = requireString(title);
+            if (!trimmedTitle) {
+                sendError(res, 400, 'VALIDATION_ERROR', 'Title is required');
                 return;
             }
 
-            if (!type || !ISSUE_TYPES.has(type)) {
-                res.status(400).json({
-                    status: 'error',
-                    error: { code: 'VALIDATION_ERROR', message: 'Invalid issue type' },
-                });
+            if (!isOneOf(type, ISSUE_TYPES)) {
+                sendError(res, 400, 'VALIDATION_ERROR', 'Invalid issue type');
                 return;
             }
 
-            if (!priority || !ISSUE_PRIORITIES.has(priority)) {
-                res.status(400).json({
-                    status: 'error',
-                    error: { code: 'VALIDATION_ERROR', message: 'Invalid priority' },
-                });
+            if (!isOneOf(priority, ISSUE_PRIORITIES)) {
+                sendError(res, 400, 'VALIDATION_ERROR', 'Invalid priority');
                 return;
             }
 
             const issue = await prisma.issue.create({
                 data: {
-                    title: title.trim(),
-                    description: typeof description === 'string' && description.trim() ? description.trim() : null,
+                    title: trimmedTitle,
+                    description: requireString(description) ?? null,
                     photoUrl: photoUrl ?? null,
 
                     type,       // Prisma enum value
@@ -75,23 +61,17 @@ router.post(
                 },
             });
 
-            res.status(201).json({ status: 'success', data: issue });
+            sendSuccess(res, issue, 201);
         } catch (err: any) {
             console.error(err);
 
             // Helpful Prisma enum error handling
             if (err?.code === 'P2003' || err?.code === 'P2009') {
-                res.status(400).json({
-                    status: 'error',
-                    error: { code: 'VALIDATION_ERROR', message: 'Invalid issue input' },
-                });
+                sendError(res, 400, 'VALIDATION_ERROR', 'Invalid issue input');
                 return;
             }
 
-            res.status(500).json({
-                status: 'error',
-                error: { code: 'SERVER_ERROR', message: 'Failed to create issue' },
-            });
+            sendError(res, 500, 'SERVER_ERROR', 'Failed to create issue');
         }
     }
 );
@@ -120,11 +100,7 @@ router.get(
                 meta: { total: issues.length },
             });
         } catch (err) {
-            console.error(err);
-            res.status(500).json({
-                status: 'error',
-                error: { code: 'SERVER_ERROR', message: 'Failed to list issues' },
-            });
+            sendError(res, 500, 'SERVER_ERROR', 'Failed to list issues');
         }
     }
 );
@@ -151,20 +127,13 @@ router.get(
             });
 
             if (!issue) {
-                res.status(404).json({
-                    status: 'error',
-                    error: { code: 'NOT_FOUND', message: 'Issue not found' },
-                });
+                sendError(res, 404, 'NOT_FOUND', 'Issue not found');
                 return;
             }
 
-            res.json({ status: 'success', data: issue });
+            sendSuccess(res, issue);
         } catch (err) {
-            console.error(err);
-            res.status(500).json({
-                status: 'error',
-                error: { code: 'SERVER_ERROR', message: 'Failed to get issue' },
-            });
+            sendError(res, 500, 'SERVER_ERROR', 'Failed to get issue');
         }
     }
 );
@@ -186,10 +155,7 @@ router.put(
             });
 
             if (!issue) {
-                res.status(404).json({
-                    status: 'error',
-                    error: { code: 'NOT_FOUND', message: 'Issue not found' },
-                });
+                sendError(res, 404, 'NOT_FOUND', 'Issue not found');
                 return;
             }
 
@@ -198,13 +164,7 @@ router.put(
 
             // Everyone can view others, but only admin or reporter can edit
             if (!isAdmin && !isReporter) {
-                res.status(403).json({
-                    status: 'error',
-                    error: {
-                        code: 'FORBIDDEN',
-                        message: 'You can only edit your own issues',
-                    },
-                });
+                sendError(res, 403, 'FORBIDDEN', 'You can only edit your own issues');
                 return;
             }
 
@@ -221,10 +181,16 @@ router.put(
             const data: any = {};
 
             // Reporter OR Admin: allowed fields
-            if (typeof title === 'string') data.title = title.trim();
-            if (description === null || typeof description === 'string') {
-                const trimmed = typeof description === 'string' ? description.trim() : null;
-                data.description = trimmed ? trimmed : null;
+            if (title !== undefined) {
+                const trimmed = requireString(title);
+                if (!trimmed) {
+                    sendError(res, 400, 'VALIDATION_ERROR', 'Title cannot be empty');
+                    return;
+                }
+                data.title = trimmed;
+            }
+            if (description !== undefined) {
+                data.description = requireString(description) ?? null;
             }
             if (photoUrl === null || typeof photoUrl === 'string') data.photoUrl = photoUrl;
             if (type) data.type = type;
@@ -234,25 +200,10 @@ router.put(
             // Admin-only: status
             if (status !== undefined) {
                 if (!isAdmin) {
-                    res.status(403).json({
-                        status: 'error',
-                        error: {
-                            code: 'ADMIN_REQUIRED',
-                            message: 'Only admins can change status',
-                        },
-                    });
+                    sendError(res, 403, 'ADMIN_REQUIRED', 'Only admins can change status');
                     return;
                 }
                 data.status = status;
-            }
-
-            // Validate title if present
-            if ('title' in data && !data.title) {
-                res.status(400).json({
-                    status: 'error',
-                    error: { code: 'VALIDATION_ERROR', message: 'Title cannot be empty' },
-                });
-                return;
             }
 
             const updated = await prisma.issue.update({
@@ -275,13 +226,9 @@ router.put(
                 }).catch(console.error);
             }
 
-            res.json({ status: 'success', data: updated });
+            sendSuccess(res, updated);
         } catch (err) {
-            console.error(err);
-            res.status(500).json({
-                status: 'error',
-                error: { code: 'SERVER_ERROR', message: 'Failed to update issue' },
-            });
+            sendError(res, 500, 'SERVER_ERROR', 'Failed to update issue');
         }
     }
 );
@@ -304,21 +251,14 @@ router.delete(
             });
 
             if (deleted.count === 0) {
-                res.status(404).json({
-                    status: 'error',
-                    error: { code: 'NOT_FOUND', message: 'Issue not found' },
-                });
+                sendError(res, 404, 'NOT_FOUND', 'Issue not found');
                 return;
             }
 
             // Cascade will remove IssueComment due to onDelete: Cascade
             res.status(204).send();
         } catch (err) {
-            console.error(err);
-            res.status(500).json({
-                status: 'error',
-                error: { code: 'SERVER_ERROR', message: 'Failed to delete issue' },
-            });
+            sendError(res, 500, 'SERVER_ERROR', 'Failed to delete issue');
         }
     }
 );
@@ -345,10 +285,7 @@ router.post(
             const trimmedContent = content?.trim();
 
             if (!trimmedContent) {
-                res.status(400).json({
-                    status: 'error',
-                    error: { code: 'VALIDATION_ERROR', message: 'Comment content is required' },
-                });
+                sendError(res, 400, 'VALIDATION_ERROR', 'Comment content is required');
                 return;
             }
 
@@ -361,10 +298,7 @@ router.post(
             });
 
             if (!issue) {
-                res.status(404).json({
-                    status: 'error',
-                    error: { code: 'NOT_FOUND', message: 'Issue not found' },
-                });
+                sendError(res, 404, 'NOT_FOUND', 'Issue not found');
                 return;
             }
 
@@ -382,16 +316,9 @@ router.post(
                 },
             });
 
-            res.status(201).json({
-                status: 'success',
-                data: created,
-            });
+            sendSuccess(res, created, 201);
         } catch (err) {
-            console.error(err);
-            res.status(500).json({
-                status: 'error',
-                error: { code: 'SERVER_ERROR', message: 'Failed to create comment' },
-            });
+            sendError(res, 500, 'SERVER_ERROR', 'Failed to create comment');
         }
     }
 );
@@ -415,10 +342,7 @@ router.get(
             });
 
             if (!issue) {
-                res.status(404).json({
-                    status: 'error',
-                    error: { code: 'NOT_FOUND', message: 'Issue not found' },
-                });
+                sendError(res, 404, 'NOT_FOUND', 'Issue not found');
                 return;
             }
 
@@ -432,16 +356,144 @@ router.get(
                 },
             });
 
-            res.json({
-                status: 'success',
-                data: comments,
-            });
+            sendSuccess(res, comments);
         } catch (err) {
-            console.error(err);
-            res.status(500).json({
-                status: 'error',
-                error: { code: 'SERVER_ERROR', message: 'Failed to load comments' },
+            sendError(res, 500, 'SERVER_ERROR', 'Failed to load comments');
+        }
+    }
+);
+
+//for notifications
+router.put(
+    '/:issueId',
+    requireHouseholdMember,
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+        try {
+            const { issueId } = req.params;
+
+            const issue = await prisma.issue.findFirst({
+                where: { id: issueId, householdId: req.householdId! },
+                select: {
+                    id: true,
+                    reportedById: true,
+                    status: true,
+                    title: true,
+                },
             });
+
+            if (!issue) {
+                sendError(res, 404, 'NOT_FOUND', 'Issue not found');
+                return;
+            }
+
+            const isAdmin = req.userRole === 'ADMIN';
+            const isReporter = issue.reportedById === req.userId;
+
+            if (!isAdmin && !isReporter) {
+                sendError(res, 403, 'FORBIDDEN', 'You can only edit your own issues');
+                return;
+            }
+
+            const {
+                title,
+                description,
+                photoUrl,
+                type,
+                priority,
+                isAnonymous,
+                status, // admin-only
+            } = req.body;
+
+            const data: any = {};
+
+            if (title !== undefined) {
+                const trimmed = requireString(title);
+                if (!trimmed) {
+                    sendError(res, 400, 'VALIDATION_ERROR', 'Title cannot be empty');
+                    return;
+                }
+                data.title = trimmed;
+            }
+
+            if (description !== undefined) {
+                data.description = requireString(description) ?? null;
+            }
+
+            if (photoUrl === null || typeof photoUrl === 'string') data.photoUrl = photoUrl;
+
+            if (type !== undefined) {
+                if (!isOneOf(type, ISSUE_TYPES)) {
+                    sendError(res, 400, 'VALIDATION_ERROR', 'Invalid issue type');
+                    return;
+                }
+                data.type = type;
+            }
+
+            if (priority !== undefined) {
+                if (!isOneOf(priority, ISSUE_PRIORITIES)) {
+                    sendError(res, 400, 'VALIDATION_ERROR', 'Invalid priority');
+                    return;
+                }
+                data.priority = priority;
+            }
+
+            if (typeof isAnonymous === 'boolean') data.isAnonymous = isAnonymous;
+
+            if (status !== undefined) {
+                if (!isAdmin) {
+                    sendError(res, 403, 'ADMIN_REQUIRED', 'Only admins can change status');
+                    return;
+                }
+
+                data.status = status;
+            }
+
+            const oldStatus = issue.status;
+
+            const updated = await prisma.issue.update({
+                where: { id: issue.id },
+                data,
+                include: {
+                    reportedBy: { select: userSelect },
+                    comments: { include: { user: { select: userSelect } } },
+                },
+            });
+
+            const newStatus = updated.status;
+
+            if (status !== undefined && newStatus !== oldStatus) {
+                if (issue.reportedById !== req.userId) {
+                    createNotification({
+                        userId: issue.reportedById,
+                        householdId: req.householdId!,
+                        type: 'ISSUE_STATUS_CHANGED',
+                        message: `Your issue "${updated.title}" changed from ${oldStatus} to ${newStatus}`,
+                        payload: {
+                            issueId: updated.id,
+                            issueTitle: updated.title,
+                            oldStatus,
+                            newStatus,
+                        },
+                    }).catch(console.error);
+                }
+
+                broadcastNotification({
+                    householdId: req.householdId!,
+                    excludeUserIds: [...new Set([req.userId!, issue.reportedById])],          
+                    type: 'ISSUE_STATUS_CHANGED',
+                    message: `Issue "${updated.title}" status changed from ${oldStatus} to ${newStatus}`,
+                    payload: {
+                        issueId: updated.id,
+                        issueTitle: updated.title,
+                        oldStatus,
+                        newStatus,
+                    },
+                }).catch(console.error);
+            }
+
+            sendSuccess(res, updated);
+        } catch (err) {
+            sendError(res, 500, 'SERVER_ERROR', 'Failed to update issue');
         }
     }
 );

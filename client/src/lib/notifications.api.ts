@@ -1,16 +1,17 @@
 import api from '@/lib/api';
+import { buildQueryString } from '@/lib/queryParams';
 import type { Notification } from '@/types/notifications';
 
 export async function listNotificationsApi(
   householdId: string,
   params?: { page?: number; limit?: number; unreadOnly?: boolean }
 ): Promise<{ notifications: Notification[]; meta: { page: number; limit: number; total: number; totalPages: number } }> {
-  const query = new URLSearchParams();
-  if (params?.page) query.set('page', String(params.page));
-  if (params?.limit) query.set('limit', String(params.limit));
-  if (params?.unreadOnly) query.set('unreadOnly', 'true');
-  const qs = query.toString();
-  const res = await api.get(`/households/${householdId}/tasks/notifications${qs ? `?${qs}` : ''}`);
+  const qs = buildQueryString({
+    page: params?.page,
+    limit: params?.limit,
+    unreadOnly: params?.unreadOnly || undefined,
+  });
+  const res = await api.get(`/households/${householdId}/tasks/notifications${qs}`);
   return { notifications: res.data.data, meta: res.data.meta };
 }
 
