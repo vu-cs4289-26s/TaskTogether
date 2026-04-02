@@ -85,7 +85,7 @@ export default function ForgotPasswordModal({
           disabled={loading}
           className="text-sage font-medium hover:underline disabled:opacity-60"
         >
-          Back to Sign In
+          Back to Log In
         </button>
       </div>
     </BaseModal>

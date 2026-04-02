@@ -140,6 +140,7 @@ export default function HouseholdCalendarPage() {
   const [isEditEventOpen, setIsEditEventOpen] = useState(false);
   const [isUpdatingEvent, setIsUpdatingEvent] = useState(false);
   const [updateEventError, setUpdateEventError] = useState<string | null>(null);
+  const isAdmin = household?.myRole === 'ADMIN';
 
   useEffect(() => {
     if (!id) return;
@@ -500,7 +501,7 @@ export default function HouseholdCalendarPage() {
           }
         }}
         onSave={handleUpdateEvent}
-        onDelete={handleDeleteEvent}
+        onDelete={isAdmin ? handleDeleteEvent : undefined}
       />
 
       <BaseModal
@@ -527,28 +528,30 @@ export default function HouseholdCalendarPage() {
           </div>
 
           <div className="flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="danger"
-              onClick={async () => {
-                if (!id || !activeActivity) return;
-                setIsUpdatingEvent(true);
-                setUpdateEventError(null);
-                const deletingId = activeActivity.id;
-                setActivities((prev) => prev.filter((a) => a.id !== deletingId));
-                try {
-                  await deleteActivityApi(id, deletingId);
-                } catch {
-                  // keep optimistic
-                } finally {
-                  setIsUpdatingEvent(false);
-                  closeActivityDetails();
-                }
-              }}
-              disabled={!activeActivity || isUpdatingEvent}
-            >
-              Delete
-            </Button>
+            {isAdmin && (
+              <Button
+                type="button"
+                variant="danger"
+                onClick={async () => {
+                  if (!id || !activeActivity) return;
+                  setIsUpdatingEvent(true);
+                  setUpdateEventError(null);
+                  const deletingId = activeActivity.id;
+                  setActivities((prev) => prev.filter((a) => a.id !== deletingId));
+                  try {
+                    await deleteActivityApi(id, deletingId);
+                  } catch {
+                    // keep optimistic
+                  } finally {
+                    setIsUpdatingEvent(false);
+                    closeActivityDetails();
+                  }
+                }}
+                disabled={!activeActivity || isUpdatingEvent}
+              >
+                Delete
+              </Button>
+            )}
 
             <Button
               type="button"

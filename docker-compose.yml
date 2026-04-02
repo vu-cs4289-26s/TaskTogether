@@ -15,5 +15,12 @@ services:
       - postgres_data:/var/lib/postgresql/data
     command: postgres -c 'max_connections=200'
 
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: tasktogether_mailpit
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
 volumes:
   postgres_data:

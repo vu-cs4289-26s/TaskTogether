@@ -7,6 +7,17 @@ import Button from '@/components/ui/Button';
 import Field, { inputClass } from '@/components/ui/Field';
 import api from '@/lib/api';
 
+function formatDeliveryMessage(
+  message: string,
+  debug?: { code?: string; resetUrl?: string; preview?: string }
+) {
+  if (!debug) return message;
+  if (debug.code) return `${message} Dev code: ${debug.code}`;
+  if (debug.resetUrl) return `${message} Dev reset link: ${debug.resetUrl}`;
+  if (debug.preview) return `${message} ${debug.preview}`;
+  return message;
+}
+
 type SectionProps = {
   title: string;
   description: string;
@@ -83,6 +94,41 @@ function formatPasswordDate(dateString?: string) {
   });
 }
 
+function ConnectedGoogleAccount({
+  linked,
+  email,
+}: {
+  linked: boolean;
+  email?: string | null;
+}) {
+  return (
+    <div className="mt-4 p-4 rounded-sm bg-soft-highlight flex items-center justify-between gap-4 flex-wrap">
+      <div className="flex items-center gap-3">
+        <div className="w-8 h-8 rounded-sm flex items-center justify-center bg-[#4285F4]">
+          <span className="text-white font-bold text-sm">G</span>
+        </div>
+        <div>
+          <div className="font-semibold text-sm">Google</div>
+          <div className="text-xs text-text-secondary">
+            {linked ? email || 'Connected to your Google account' : 'Not connected'}
+          </div>
+        </div>
+      </div>
+
+      <span
+        className={[
+          'px-2 py-1 rounded text-[11px] font-semibold uppercase border',
+          linked
+            ? 'bg-success/10 text-success border-success'
+            : 'bg-transparent text-text-secondary border-divider',
+        ].join(' ')}
+      >
+        {linked ? 'Connected' : 'Not Connected'}
+      </span>
+    </div>
+  );
+}
+
 type TwoFactorModalProps = {
   isOpen: boolean;
   mode: 'enable' | 'disable';
@@ -119,8 +165,16 @@ function TwoFactorModal({
       : 'Enter the verification code sent to your email to turn off two-factor authentication.';
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/35 px-4">
-      <div className="w-full max-w-[520px] rounded-md border border-divider bg-surface shadow-xl">
+    <div
+      className="fixed inset-0 z-[100] flex items-start justify-center bg-black/35 px-4 py-10 overflow-y-auto"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget && !loading) onClose();
+      }}
+    >
+      <div
+        className="w-full max-w-[520px] rounded-md border border-divider bg-surface shadow-xl my-auto max-h-[calc(100vh-5rem)] overflow-y-auto"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <div className="p-6 border-b border-divider">
           <h2 className="text-2xl font-heading font-semibold text-sage">{title}</h2>
           <p className="mt-2 text-sm text-text-secondary">{description}</p>
@@ -226,7 +280,10 @@ function ChangePasswordModal({
       const res = await api.post('/auth/2fa/send-password-change-code');
       setPasswordChangeCodeSent(true);
       setSuccess(
-        res.data?.data?.message || 'A verification code was sent to your email.'
+        formatDeliveryMessage(
+          res.data?.data?.message || 'A verification code was sent to your email.',
+          res.data?.data?.debug
+        )
       );
     } catch (err: unknown) {
       const errorObj = err as {
@@ -314,8 +371,16 @@ function ChangePasswordModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/35 px-4">
-      <div className="w-full max-w-[520px] rounded-md border border-divider bg-surface shadow-xl">
+    <div
+      className="fixed inset-0 z-[100] flex items-start justify-center bg-black/35 px-4 py-10 overflow-y-auto"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget && !loading) onClose();
+      }}
+    >
+      <div
+        className="w-full max-w-[520px] rounded-md border border-divider bg-surface shadow-xl my-auto max-h-[calc(100vh-5rem)] overflow-y-auto"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <div className="p-6 border-b border-divider">
           <h2 className="text-2xl font-heading font-semibold text-sage">
             Change Password
@@ -470,23 +535,17 @@ export default function SettingsPage() {
     'realtime' | 'hourly' | 'daily' | 'weekly'
   >('daily');
 
-  const [_profileVisibility, _setProfileVisibility] = useState<
-    'all' | 'household' | 'private'
-  >('household');
-  const [_showStats, _setShowStats] = useState(true);
-  const [_activityStatus, _setActivityStatus] = useState(true);
-
-  const [defaultHousehold, setDefaultHousehold] = useState<
-    'main' | 'beach' | 'campus' | 'last'
-  >('main');
-  const [_language, _setLanguage] = useState<'en' | 'es' | 'fr' | 'de'>('en');
-  const [timezone, setTimezone] = useState<'est' | 'cst' | 'mst' | 'pst'>('est');
-  const [startWeekOn, setStartWeekOn] = useState<'sunday' | 'monday'>('sunday');
-  const [dateFormat, setDateFormat] = useState<'mdy' | 'dmy' | 'ymd'>('mdy');
+const [_profileVisibility, _setProfileVisibility] = useState<
+  'all' | 'household' | 'private'
+>('household');
+const [_showStats, _setShowStats] = useState(true);
+const [_activityStatus, _setActivityStatus] = useState(true);
 
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const [passwordUpdatedAt, setPasswordUpdatedAt] = useState<string>('');
   const [passwordDateLoading, setPasswordDateLoading] = useState(true);
+  const [googleLinked, setGoogleLinked] = useState(false);
+  const [googleEmail, setGoogleEmail] = useState<string>('');
 
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const [twoFactorLoading, setTwoFactorLoading] = useState(true);
@@ -497,23 +556,27 @@ export default function SettingsPage() {
   const [twoFactorModalOpen, setTwoFactorModalOpen] = useState(false);
   const [twoFactorMode, setTwoFactorMode] = useState<'enable' | 'disable'>('enable');
 
-  useEffect(() => {
-    async function loadUser() {
-      try {
-        const res = await api.get('/users/me');
-        setPasswordUpdatedAt(res.data?.data?.passwordUpdatedAt || '');
-        setTwoFactorEnabled(Boolean(res.data?.data?.twoFactorEnabled));
-      } catch {
-        setPasswordUpdatedAt('');
-        setTwoFactorEnabled(false);
-      } finally {
-        setPasswordDateLoading(false);
-        setTwoFactorLoading(false);
-      }
+useEffect(() => {
+  async function loadUser() {
+    try {
+      const res = await api.get('/users/me');
+      setPasswordUpdatedAt(res.data?.data?.passwordUpdatedAt || '');
+      setTwoFactorEnabled(Boolean(res.data?.data?.twoFactorEnabled));
+      setGoogleLinked(Boolean(res.data?.data?.googleLinked));
+      setGoogleEmail(res.data?.data?.googleEmail || '');
+    } catch {
+      setPasswordUpdatedAt('');
+      setTwoFactorEnabled(false);
+      setGoogleLinked(false);
+      setGoogleEmail('');
+    } finally {
+      setPasswordDateLoading(false);
+      setTwoFactorLoading(false);
     }
+  }
 
-    loadUser();
-  }, []);
+  loadUser();
+}, []);
 
   function closeTwoFactorModal() {
     setTwoFactorModalOpen(false);
@@ -537,7 +600,10 @@ export default function SettingsPage() {
 
       setTwoFactorModalOpen(true);
       setTwoFactorSuccess(
-        res.data?.data?.message || 'A verification code was sent to your email.'
+        formatDeliveryMessage(
+          res.data?.data?.message || 'A verification code was sent to your email.',
+          res.data?.data?.debug
+        )
       );
     } catch (err: unknown) {
       const errorObj = err as {
@@ -601,7 +667,7 @@ export default function SettingsPage() {
     }
   }
 
-  return (
+return (
     <div className="min-h-screen bg-base">
       <AppNavbar />
 
@@ -691,21 +757,7 @@ export default function SettingsPage() {
               Link external accounts for easy sign-in
             </div>
 
-            <div className="mt-4 p-4 rounded-sm bg-soft-highlight flex items-center justify-between gap-4 flex-wrap">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-sm flex items-center justify-center bg-[#4285F4]">
-                  <span className="text-white font-bold text-sm">G</span>
-                </div>
-                <div>
-                  <div className="font-semibold text-sm">Google</div>
-                  <div className="text-xs text-text-secondary">jordan.davis@gmail.com</div>
-                </div>
-              </div>
-
-              <span className="px-2 py-1 rounded text-[11px] font-semibold uppercase bg-success/10 text-success border border-success">
-                Connected
-              </span>
-            </div>
+            <ConnectedGoogleAccount linked={googleLinked} email={googleEmail} />
           </div>
 
           <SettingItem
@@ -736,76 +788,7 @@ export default function SettingsPage() {
             noDivider
           />
         </SettingsSection>
-
-        <SettingsSection
-          title="Preferences"
-          description="Customize your TaskTogether experience"
-        >
-          <SettingItem
-            label="Default Household"
-            hint="Which household to show when you log in"
-            right={
-              <select
-                value={defaultHousehold}
-                onChange={(e) =>
-                  setDefaultHousehold(e.target.value as typeof defaultHousehold)
-                }
-                className="min-w-[220px] px-4 py-2 rounded-sm border border-divider bg-surface text-sm text-text-primary focus:outline-none focus:border-sage"
-              >
-                <option value="main">Main Street Apartment</option>
-                <option value="beach">Beach House</option>
-                <option value="campus">Campus Dorm Suite</option>
-                <option value="last">Last visited</option>
-              </select>
-            }
-          />
-          <SettingItem
-            label="Timezone"
-            hint="Used for task deadlines and event times"
-            right={
-              <select
-                value={timezone}
-                onChange={(e) => setTimezone(e.target.value as typeof timezone)}
-                className="min-w-[220px] px-4 py-2 rounded-sm border border-divider bg-surface text-sm text-text-primary focus:outline-none focus:border-sage"
-              >
-                <option value="est">Eastern Time (ET)</option>
-                <option value="cst">Central Time (CT)</option>
-                <option value="mst">Mountain Time (MT)</option>
-                <option value="pst">Pacific Time (PT)</option>
-              </select>
-            }
-          />
-          <SettingItem
-            label="Start Week On"
-            hint="First day of the week in calendars"
-            right={
-              <select
-                value={startWeekOn}
-                onChange={(e) => setStartWeekOn(e.target.value as typeof startWeekOn)}
-                className="min-w-[220px] px-4 py-2 rounded-sm border border-divider bg-surface text-sm text-text-primary focus:outline-none focus:border-sage"
-              >
-                <option value="sunday">Sunday</option>
-                <option value="monday">Monday</option>
-              </select>
-            }
-          />
-          <SettingItem
-            label="Date Format"
-            hint="How dates are displayed"
-            right={
-              <select
-                value={dateFormat}
-                onChange={(e) => setDateFormat(e.target.value as typeof dateFormat)}
-                className="min-w-[220px] px-4 py-2 rounded-sm border border-divider bg-surface text-sm text-text-primary focus:outline-none focus:border-sage"
-              >
-                <option value="mdy">MM/DD/YYYY</option>
-                <option value="dmy">DD/MM/YYYY</option>
-                <option value="ymd">YYYY-MM-DD</option>
-              </select>
-            }
-            noDivider
-          />
-        </SettingsSection>
+        
       </main>
 
       <ChangePasswordModal

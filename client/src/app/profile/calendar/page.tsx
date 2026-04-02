@@ -3,7 +3,7 @@
 // Calendar-only page for Profile events.
 // Duplicates the profile calendar logic with minimal refactors.
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AppNavbar from '@/components/shared/AppNavbar';
 import { useAuth } from '@/contexts/AuthContext';
@@ -16,6 +16,7 @@ import type { Activity, CreateActivityInput } from '@/types/activities';
 import BaseModal from '@/components/modals/BaseModal';
 import Button from '@/components/ui/Button';
 import { Plus } from 'lucide-react';
+import { loadProfileActivities, saveProfileActivities } from '@/lib/profileActivities';
 
 function pad2(n: number) {
   return String(n).padStart(2, '0');
@@ -41,9 +42,13 @@ function extractTag(desc: string | null | undefined, key: string): string | null
 function withTags(desc: string | undefined, input: EventDetailInput) {
   const parts: string[] = [];
   const base = (desc ?? '').trim();
-  if (base) parts.push(base);
+  if (base) parts.push(stripTags(base));
 
   parts.push(`[[TT_TYPE:${input.type}]]`);
+
+  if (input.location?.trim()) {
+    parts.push(`[[TT_LOC:${input.location.replace(/\]/g, '').trim()}]]`);
+  }
 
   if (input.allDay) {
     parts.push('[[TT_ALLDAY:1]]');
@@ -58,6 +63,7 @@ function stripTags(desc: string) {
   return desc
     .replace(/\[\[TT_TYPE:[a-z-]+\]\]/gi, '')
     .replace(/\[\[TT_END:[0-9:]+\]\]/gi, '')
+    .replace(/\[\[TT_LOC:[^\]]+\]\]/gi, '')
     .replace(/\[\[TT_ALLDAY:1\]\]/gi, '')
     .trim();
 }
@@ -107,8 +113,9 @@ export default function ProfileCalendarPage() {
   const [calMonth, setCalMonth] = useState(() => new Date().getMonth());
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
 
-  // Local profile events (no backend)
+  // Personal profile events are persisted locally per signed-in user.
   const [activities, setActivities] = useState<Activity[]>([]);
+  const [profileActivitiesLoaded, setProfileActivitiesLoaded] = useState(false);
 
   // Create modal
   const [isAddEventOpen, setIsAddEventOpen] = useState(false);
@@ -166,6 +173,22 @@ export default function ProfileCalendarPage() {
       .sort((a, b) => +new Date(a.scheduledAt) - +new Date(b.scheduledAt));
   }, [activities, selectedDate]);
 
+  useEffect(() => {
+    if (!user?.id) {
+      setActivities([]);
+      setProfileActivitiesLoaded(false);
+      return;
+    }
+
+    setActivities(loadProfileActivities(user.id));
+    setProfileActivitiesLoaded(true);
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id || !profileActivitiesLoaded) return;
+    saveProfileActivities(user.id, activities);
+  }, [activities, user?.id, profileActivitiesLoaded]);
+
   async function handleCreateEvent(input: EventDetailInput) {
     try {
       setIsCreatingEvent(true);
@@ -213,6 +236,7 @@ export default function ProfileCalendarPage() {
     const subtype = extractTag(activity.description, 'TT_TYPE')?.toLowerCase() ?? 'personal';
     const isAllDay = extractTag(activity.description, 'TT_ALLDAY') === '1';
     const endTime = extractTag(activity.description, 'TT_END') ?? '';
+    const location = extractTag(activity.description, 'TT_LOC') ?? '';
 
     return {
       name: activity.title,
@@ -220,7 +244,7 @@ export default function ProfileCalendarPage() {
       date: isoDate,
       startTime: start,
       endTime,
-      location: '',
+      location,
       description: activity.description ? stripTags(activity.description) : '',
       allDay: isAllDay,
     };

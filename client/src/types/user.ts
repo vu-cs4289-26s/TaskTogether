@@ -8,4 +8,6 @@ export type User = {
   createdAt?: string;
   passwordUpdatedAt?: string | null;
   twoFactorEnabled?: boolean;
+  googleLinked?: boolean;
+  googleEmail?: string | null;
 };
