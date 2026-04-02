@@ -3,6 +3,7 @@ import { authenticate } from '../middleware/authentication.js';
 import { requireHouseholdMember } from '../middleware/authorization.js';
 import { AuthenticatedRequest } from '../types/index.js';
 import prisma from '../lib/prisma.js';
+import { sendError, sendSuccess } from '../utils/responses.js';
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
@@ -51,13 +52,9 @@ router.get(
                 });
             }
 
-            res.json({ status: 'success', data: sections });
+            sendSuccess(res, sections);
         } catch (err) {
-            console.error(err);
-            res.status(500).json({
-                status: 'error',
-                error: { code: 'SERVER_ERROR', message: 'Failed to list wiki sections' },
-            });
+            sendError(res, 500, 'SERVER_ERROR', 'Failed to list wiki sections');
         }
     }
 );
@@ -73,10 +70,7 @@ router.put(
             const { content } = req.body;
 
             if (typeof content !== 'string') {
-                res.status(400).json({
-                    status: 'error',
-                    error: { code: 'VALIDATION_ERROR', message: 'Content is required' },
-                });
+                sendError(res, 400, 'VALIDATION_ERROR', 'Content is required');
                 return;
             }
 
@@ -85,10 +79,7 @@ router.put(
             });
 
             if (!section) {
-                res.status(404).json({
-                    status: 'error',
-                    error: { code: 'NOT_FOUND', message: 'Wiki section not found' },
-                });
+                sendError(res, 404, 'NOT_FOUND', 'Wiki section not found');
                 return;
             }
 
@@ -101,13 +92,9 @@ router.put(
                 include: { updatedBy: { select: updatedBySelect } },
             });
 
-            res.json({ status: 'success', data: updated });
+            sendSuccess(res, updated);
         } catch (err) {
-            console.error(err);
-            res.status(500).json({
-                status: 'error',
-                error: { code: 'SERVER_ERROR', message: 'Failed to update wiki section' },
-            });
+            sendError(res, 500, 'SERVER_ERROR', 'Failed to update wiki section');
         }
     }
 );

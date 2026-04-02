@@ -4,6 +4,7 @@ import { requireHouseholdMember, requireAdmin } from '../middleware/authorizatio
 import { AuthenticatedRequest } from '../types/index.js';
 import prisma from '../lib/prisma.js';
 import { createNotification, broadcastNotification } from '../lib/notifications.js';
+import { sendError, sendSuccess } from '../utils/responses.js';
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
@@ -33,26 +34,17 @@ router.post(
             const { title, description, photoUrl, type, priority, isAnonymous } = req.body;
 
             if (!title || !title.trim()) {
-                res.status(400).json({
-                    status: 'error',
-                    error: { code: 'VALIDATION_ERROR', message: 'Title is required' },
-                });
+                sendError(res, 400, 'VALIDATION_ERROR', 'Title is required');
                 return;
             }
 
             if (!type || !ISSUE_TYPES.has(type)) {
-                res.status(400).json({
-                    status: 'error',
-                    error: { code: 'VALIDATION_ERROR', message: 'Invalid issue type' },
-                });
+                sendError(res, 400, 'VALIDATION_ERROR', 'Invalid issue type');
                 return;
             }
 
             if (!priority || !ISSUE_PRIORITIES.has(priority)) {
-                res.status(400).json({
-                    status: 'error',
-                    error: { code: 'VALIDATION_ERROR', message: 'Invalid priority' },
-                });
+                sendError(res, 400, 'VALIDATION_ERROR', 'Invalid priority');
                 return;
             }
 
@@ -75,23 +67,17 @@ router.post(
                 },
             });
 
-            res.status(201).json({ status: 'success', data: issue });
+            sendSuccess(res, issue, 201);
         } catch (err: any) {
             console.error(err);
 
             // Helpful Prisma enum error handling
             if (err?.code === 'P2003' || err?.code === 'P2009') {
-                res.status(400).json({
-                    status: 'error',
-                    error: { code: 'VALIDATION_ERROR', message: 'Invalid issue input' },
-                });
+                sendError(res, 400, 'VALIDATION_ERROR', 'Invalid issue input');
                 return;
             }
 
-            res.status(500).json({
-                status: 'error',
-                error: { code: 'SERVER_ERROR', message: 'Failed to create issue' },
-            });
+            sendError(res, 500, 'SERVER_ERROR', 'Failed to create issue');
         }
     }
 );
@@ -120,11 +106,7 @@ router.get(
                 meta: { total: issues.length },
             });
         } catch (err) {
-            console.error(err);
-            res.status(500).json({
-                status: 'error',
-                error: { code: 'SERVER_ERROR', message: 'Failed to list issues' },
-            });
+            sendError(res, 500, 'SERVER_ERROR', 'Failed to list issues');
         }
     }
 );
@@ -151,20 +133,13 @@ router.get(
             });
 
             if (!issue) {
-                res.status(404).json({
-                    status: 'error',
-                    error: { code: 'NOT_FOUND', message: 'Issue not found' },
-                });
+                sendError(res, 404, 'NOT_FOUND', 'Issue not found');
                 return;
             }
 
-            res.json({ status: 'success', data: issue });
+            sendSuccess(res, issue);
         } catch (err) {
-            console.error(err);
-            res.status(500).json({
-                status: 'error',
-                error: { code: 'SERVER_ERROR', message: 'Failed to get issue' },
-            });
+            sendError(res, 500, 'SERVER_ERROR', 'Failed to get issue');
         }
     }
 );
@@ -186,10 +161,7 @@ router.put(
             });
 
             if (!issue) {
-                res.status(404).json({
-                    status: 'error',
-                    error: { code: 'NOT_FOUND', message: 'Issue not found' },
-                });
+                sendError(res, 404, 'NOT_FOUND', 'Issue not found');
                 return;
             }
 
@@ -198,13 +170,7 @@ router.put(
 
             // Everyone can view others, but only admin or reporter can edit
             if (!isAdmin && !isReporter) {
-                res.status(403).json({
-                    status: 'error',
-                    error: {
-                        code: 'FORBIDDEN',
-                        message: 'You can only edit your own issues',
-                    },
-                });
+                sendError(res, 403, 'FORBIDDEN', 'You can only edit your own issues');
                 return;
             }
 
@@ -234,13 +200,7 @@ router.put(
             // Admin-only: status
             if (status !== undefined) {
                 if (!isAdmin) {
-                    res.status(403).json({
-                        status: 'error',
-                        error: {
-                            code: 'ADMIN_REQUIRED',
-                            message: 'Only admins can change status',
-                        },
-                    });
+                    sendError(res, 403, 'ADMIN_REQUIRED', 'Only admins can change status');
                     return;
                 }
                 data.status = status;
@@ -248,10 +208,7 @@ router.put(
 
             // Validate title if present
             if ('title' in data && !data.title) {
-                res.status(400).json({
-                    status: 'error',
-                    error: { code: 'VALIDATION_ERROR', message: 'Title cannot be empty' },
-                });
+                sendError(res, 400, 'VALIDATION_ERROR', 'Title cannot be empty');
                 return;
             }
 
@@ -275,13 +232,9 @@ router.put(
                 }).catch(console.error);
             }
 
-            res.json({ status: 'success', data: updated });
+            sendSuccess(res, updated);
         } catch (err) {
-            console.error(err);
-            res.status(500).json({
-                status: 'error',
-                error: { code: 'SERVER_ERROR', message: 'Failed to update issue' },
-            });
+            sendError(res, 500, 'SERVER_ERROR', 'Failed to update issue');
         }
     }
 );
@@ -304,21 +257,14 @@ router.delete(
             });
 
             if (deleted.count === 0) {
-                res.status(404).json({
-                    status: 'error',
-                    error: { code: 'NOT_FOUND', message: 'Issue not found' },
-                });
+                sendError(res, 404, 'NOT_FOUND', 'Issue not found');
                 return;
             }
 
             // Cascade will remove IssueComment due to onDelete: Cascade
             res.status(204).send();
         } catch (err) {
-            console.error(err);
-            res.status(500).json({
-                status: 'error',
-                error: { code: 'SERVER_ERROR', message: 'Failed to delete issue' },
-            });
+            sendError(res, 500, 'SERVER_ERROR', 'Failed to delete issue');
         }
     }
 );
@@ -345,10 +291,7 @@ router.post(
             const trimmedContent = content?.trim();
 
             if (!trimmedContent) {
-                res.status(400).json({
-                    status: 'error',
-                    error: { code: 'VALIDATION_ERROR', message: 'Comment content is required' },
-                });
+                sendError(res, 400, 'VALIDATION_ERROR', 'Comment content is required');
                 return;
             }
 
@@ -361,10 +304,7 @@ router.post(
             });
 
             if (!issue) {
-                res.status(404).json({
-                    status: 'error',
-                    error: { code: 'NOT_FOUND', message: 'Issue not found' },
-                });
+                sendError(res, 404, 'NOT_FOUND', 'Issue not found');
                 return;
             }
 
@@ -382,16 +322,9 @@ router.post(
                 },
             });
 
-            res.status(201).json({
-                status: 'success',
-                data: created,
-            });
+            sendSuccess(res, created, 201);
         } catch (err) {
-            console.error(err);
-            res.status(500).json({
-                status: 'error',
-                error: { code: 'SERVER_ERROR', message: 'Failed to create comment' },
-            });
+            sendError(res, 500, 'SERVER_ERROR', 'Failed to create comment');
         }
     }
 );
@@ -415,10 +348,7 @@ router.get(
             });
 
             if (!issue) {
-                res.status(404).json({
-                    status: 'error',
-                    error: { code: 'NOT_FOUND', message: 'Issue not found' },
-                });
+                sendError(res, 404, 'NOT_FOUND', 'Issue not found');
                 return;
             }
 
@@ -432,16 +362,9 @@ router.get(
                 },
             });
 
-            res.json({
-                status: 'success',
-                data: comments,
-            });
+            sendSuccess(res, comments);
         } catch (err) {
-            console.error(err);
-            res.status(500).json({
-                status: 'error',
-                error: { code: 'SERVER_ERROR', message: 'Failed to load comments' },
-            });
+            sendError(res, 500, 'SERVER_ERROR', 'Failed to load comments');
         }
     }
 );
@@ -465,10 +388,7 @@ router.put(
             });
 
             if (!issue) {
-                res.status(404).json({
-                    status: 'error',
-                    error: { code: 'NOT_FOUND', message: 'Issue not found' },
-                });
+                sendError(res, 404, 'NOT_FOUND', 'Issue not found');
                 return;
             }
 
@@ -476,13 +396,7 @@ router.put(
             const isReporter = issue.reportedById === req.userId;
 
             if (!isAdmin && !isReporter) {
-                res.status(403).json({
-                    status: 'error',
-                    error: {
-                        code: 'FORBIDDEN',
-                        message: 'You can only edit your own issues',
-                    },
-                });
+                sendError(res, 403, 'FORBIDDEN', 'You can only edit your own issues');
                 return;
             }
 
@@ -509,10 +423,7 @@ router.put(
 
             if (type !== undefined) {
                 if (!ISSUE_TYPES.has(type)) {
-                    res.status(400).json({
-                        status: 'error',
-                        error: { code: 'VALIDATION_ERROR', message: 'Invalid issue type' },
-                    });
+                    sendError(res, 400, 'VALIDATION_ERROR', 'Invalid issue type');
                     return;
                 }
                 data.type = type;
@@ -520,10 +431,7 @@ router.put(
 
             if (priority !== undefined) {
                 if (!ISSUE_PRIORITIES.has(priority)) {
-                    res.status(400).json({
-                        status: 'error',
-                        error: { code: 'VALIDATION_ERROR', message: 'Invalid priority' },
-                    });
+                    sendError(res, 400, 'VALIDATION_ERROR', 'Invalid priority');
                     return;
                 }
                 data.priority = priority;
@@ -533,13 +441,7 @@ router.put(
 
             if (status !== undefined) {
                 if (!isAdmin) {
-                    res.status(403).json({
-                        status: 'error',
-                        error: {
-                            code: 'ADMIN_REQUIRED',
-                            message: 'Only admins can change status',
-                        },
-                    });
+                    sendError(res, 403, 'ADMIN_REQUIRED', 'Only admins can change status');
                     return;
                 }
 
@@ -547,10 +449,7 @@ router.put(
             }
 
             if ('title' in data && !data.title) {
-                res.status(400).json({
-                    status: 'error',
-                    error: { code: 'VALIDATION_ERROR', message: 'Title cannot be empty' },
-                });
+                sendError(res, 400, 'VALIDATION_ERROR', 'Title cannot be empty');
                 return;
             }
 
@@ -597,13 +496,9 @@ router.put(
                 }).catch(console.error);
             }
 
-            res.json({ status: 'success', data: updated });
+            sendSuccess(res, updated);
         } catch (err) {
-            console.error(err);
-            res.status(500).json({
-                status: 'error',
-                error: { code: 'SERVER_ERROR', message: 'Failed to update issue' },
-            });
+            sendError(res, 500, 'SERVER_ERROR', 'Failed to update issue');
         }
     }
 );

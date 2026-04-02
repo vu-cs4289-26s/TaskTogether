@@ -4,6 +4,7 @@ import sharp from 'sharp';
 import { authenticate } from '../middleware/authentication.js';
 import { AuthenticatedRequest } from '../types/index.js';
 import { uploadToS3 } from '../lib/s3.js';
+import { sendError, sendSuccess } from '../utils/responses.js';
 
 const router = Router();
 router.use(authenticate);
@@ -27,10 +28,7 @@ router.post(
   async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
       if (!req.file) {
-        res.status(400).json({
-          status: 'error',
-          error: { code: 'NO_FILE', message: 'No image file provided' },
-        });
+        sendError(res, 400, 'NO_FILE', 'No image file provided');
         return;
       }
 
@@ -46,13 +44,9 @@ router.post(
         'image/jpeg'
       );
 
-      res.json({ status: 'success', data: { url } });
+      sendSuccess(res, { url });
     } catch (err) {
-      console.error('POST /upload error:', err);
-      res.status(500).json({
-        status: 'error',
-        error: { code: 'UPLOAD_FAILED', message: 'Failed to upload image' },
-      });
+      sendError(res, 500, 'UPLOAD_FAILED', 'Failed to upload image');
     }
   }
 );

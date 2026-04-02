@@ -331,7 +331,7 @@ router.delete(
         where: { id: existing.id },
       });
 
-      sendSuccess(res, null, 204);
+      res.status(204).send();
     } catch (err) {
       sendError(res, 500, 'INTERNAL_ERROR', 'Failed to delete activity');
     }

@@ -7,7 +7,6 @@ import { authenticate } from "../middleware/authentication.js";
 import { AuthenticatedRequest } from "../types/index.js";
 import prisma from "../lib/prisma.js";
 import { sendError, sendSuccess } from "../utils/responses.js";
-import { send } from "process";
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
