@@ -1,21 +1,19 @@
 import { Router, Response } from 'express';
 import { ActivityStatus, ActivityType, Prisma } from '@prisma/client';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate } from '../middleware/authentication.js';
 import { requireHouseholdMember, requireAdmin } from '../middleware/authorization.js';
 import { AuthenticatedRequest } from '../types/index.js';
 import prisma from '../lib/prisma.js';
+import {sendError, sendSuccess, sendPaginated} from '../utils/responses.js';
+import { userSelect } from '../utils/selects.js';
+import { parsePagination } from '../utils/pagination.js';
+import { requireString, isOneOf } from '../utils/validation.js';
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
 
-const userSelect = { id: true, name: true, email: true, avatar: true } as const;
-const VALID_ACTIVITY_TYPES = new Set<ActivityType>(['HOMEWORK', 'BONDING', 'CHORE', 'OTHER']);
-const VALID_ACTIVITY_STATUSES = new Set<ActivityStatus>([
-  'SCHEDULED',
-  'IN_PROGRESS',
-  'COMPLETED',
-  'CANCELLED',
-]);
+const VALID_ACTIVITY_TYPES = ['HOMEWORK', 'BONDING', 'CHORE', 'OTHER'] as const;
+const VALID_ACTIVITY_STATUSES = ['SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] as const;
 
 const activityInclude = {
   participants: {
@@ -59,10 +57,7 @@ async function findActivityOr404(
   });
 
   if (!activity) {
-    res.status(404).json({
-      status: 'error',
-      error: { code: 'ACTIVITY_NOT_FOUND', message: 'Activity not found' },
-    });
+    sendError(res, 404, 'ACTIVITY_NOT_FOUND', 'Activity not found');
     return null;
   }
 
@@ -89,13 +84,7 @@ async function validateParticipantIds(
   });
 
   if (memberships.length !== uniqueParticipantUserIds.length) {
-    res.status(400).json({
-      status: 'error',
-      error: {
-        code: 'INVALID_PARTICIPANTS',
-        message: 'All participants must belong to this household',
-      },
-    });
+    sendError(res, 400, 'INVALID_PARTICIPANTS', 'All participants must belong to this household');
     return null;
   }
 
@@ -109,39 +98,25 @@ router.post(
     try {
       const { title, description, activityType, scheduledAt, participantUserIds } = req.body;
 
-      if (typeof title !== 'string' || title.trim().length === 0) {
-        res.status(400).json({
-          status: 'error',
-          error: { code: 'VALIDATION_ERROR', message: 'Activity title is required' },
-        });
+      const trimmedTitle = requireString(title);
+      if (!trimmedTitle) {
+        sendError(res, 400, 'VALIDATION_ERROR', 'Activity title is required');
         return;
       }
 
-      if (!VALID_ACTIVITY_TYPES.has(activityType)) {
-        res.status(400).json({
-          status: 'error',
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: 'activityType must be one of HOMEWORK, BONDING, CHORE, or OTHER',
-          },
-        });
+      if (!isOneOf(activityType, VALID_ACTIVITY_TYPES)) {
+        sendError(res, 400, 'VALIDATION_ERROR', 'activityType must be one of HOMEWORK, BONDING, CHORE, or OTHER');
         return;
       }
 
       const parsedScheduledAt = parseDateInput(scheduledAt);
       if (!parsedScheduledAt) {
-        res.status(400).json({
-          status: 'error',
-          error: { code: 'VALIDATION_ERROR', message: 'scheduledAt must be a valid ISO date string' },
-        });
+        sendError(res, 400, 'VALIDATION_ERROR', 'scheduledAt must be a valid ISO date string');
         return;
       }
 
       if (participantUserIds !== undefined && !Array.isArray(participantUserIds)) {
-        res.status(400).json({
-          status: 'error',
-          error: { code: 'VALIDATION_ERROR', message: 'participantUserIds must be an array of user IDs' },
-        });
+        sendError(res, 400, 'VALIDATION_ERROR', 'participantUserIds must be an array of user IDs');
         return;
       }
 
@@ -156,11 +131,8 @@ router.post(
 
       const activity = await prisma.qualityTimeActivity.create({
         data: {
-          title: title.trim(),
-          description:
-            typeof description === 'string' && description.trim().length > 0
-              ? description.trim()
-              : null,
+          title: trimmedTitle,
+          description: requireString(description) ?? null,
           activityType,
           scheduledAt: parsedScheduledAt,
           householdId: req.householdId!,
@@ -176,16 +148,9 @@ router.post(
         include: activityInclude,
       });
 
-      res.status(201).json({
-        status: 'success',
-        data: activity,
-      });
+      sendSuccess(res, activity, 201);
     } catch (err) {
-      console.error('POST /activities error:', err);
-      res.status(500).json({
-        status: 'error',
-        error: { code: 'INTERNAL_ERROR', message: 'Failed to create activity' },
-      });
+      sendError(res, 500, 'INTERNAL_ERROR', 'Failed to create activity');
     }
   }
 );
@@ -195,27 +160,16 @@ router.get(
   requireHouseholdMember,
   async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
-      const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
-      const limit = Math.min(200, Math.max(1, parseInt(req.query.limit as string, 10) || 20));
-      const skip = (page - 1) * limit;
+      const {page, limit, skip} = parsePagination(req.query, 200);
       const { status, activityType } = req.query;
 
-      if (status && (typeof status !== 'string' || !VALID_ACTIVITY_STATUSES.has(status as ActivityStatus))) {
-        res.status(400).json({
-          status: 'error',
-          error: { code: 'VALIDATION_ERROR', message: 'Invalid activity status filter' },
-        });
+      if (status && !isOneOf(status, VALID_ACTIVITY_STATUSES)) {
+        sendError(res, 400, 'VALIDATION_ERROR', 'Invalid activity status filter');
         return;
       }
 
-      if (
-        activityType &&
-        (typeof activityType !== 'string' || !VALID_ACTIVITY_TYPES.has(activityType as ActivityType))
-      ) {
-        res.status(400).json({
-          status: 'error',
-          error: { code: 'VALIDATION_ERROR', message: 'Invalid activity type filter' },
-        });
+      if (activityType && !isOneOf(activityType, VALID_ACTIVITY_TYPES)) {
+        sendError(res, 400, 'VALIDATION_ERROR', 'Invalid activity type filter');
         return;
       }
 
@@ -236,11 +190,8 @@ router.get(
         prisma.qualityTimeActivity.count({ where }),
       ]);
 
-      res.json({
-        status: 'success',
-        data: activities,
-        meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
-      });
+
+      sendPaginated(res, activities, { page, limit, total });
     } catch (err) {
       console.error('GET /activities error:', err);
       res.status(500).json({
@@ -266,11 +217,7 @@ router.get(
         data: activity,
       });
     } catch (err) {
-      console.error('GET /activities/:activityId error:', err);
-      res.status(500).json({
-        status: 'error',
-        error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch activity' },
-      });
+      sendError(res, 500, 'INTERNAL_ERROR', 'Failed to fetch activity');
     }
   }
 );
@@ -289,36 +236,21 @@ router.put(
       const data: Prisma.QualityTimeActivityUpdateInput = {};
 
       if (title !== undefined) {
-        if (typeof title !== 'string' || title.trim().length === 0) {
-          res.status(400).json({
-            status: 'error',
-            error: { code: 'VALIDATION_ERROR', message: 'Activity title cannot be empty' },
-          });
+        const trimmed = requireString(title);
+        if (!trimmed) {
+          sendError(res, 400, 'VALIDATION_ERROR', 'Activity title cannot be empty');
           return;
         }
-        data.title = title.trim();
+        data.title = trimmed;
       }
 
       if (description !== undefined) {
-        if (description !== null && typeof description !== 'string') {
-          res.status(400).json({
-            status: 'error',
-            error: { code: 'VALIDATION_ERROR', message: 'description must be a string or null' },
-          });
-          return;
-        }
-        data.description =
-          typeof description === 'string' && description.trim().length > 0
-            ? description.trim()
-            : null;
+        data.description = requireString(description) ?? null;
       }
 
       if (activityType !== undefined) {
-        if (!VALID_ACTIVITY_TYPES.has(activityType)) {
-          res.status(400).json({
-            status: 'error',
-            error: { code: 'VALIDATION_ERROR', message: 'Invalid activityType' },
-          });
+        if (!isOneOf(activityType, VALID_ACTIVITY_TYPES)) {
+          sendError(res, 400, 'VALIDATION_ERROR', 'Invalid activityType');
           return;
         }
         data.activityType = activityType;
@@ -327,21 +259,15 @@ router.put(
       if (scheduledAt !== undefined) {
         const parsedScheduledAt = parseDateInput(scheduledAt);
         if (!parsedScheduledAt) {
-          res.status(400).json({
-            status: 'error',
-            error: { code: 'VALIDATION_ERROR', message: 'scheduledAt must be a valid ISO date string' },
-          });
+          sendError(res, 400, 'VALIDATION_ERROR', 'scheduledAt must be a valid ISO date string');
           return;
         }
         data.scheduledAt = parsedScheduledAt;
       }
 
       if (status !== undefined) {
-        if (!VALID_ACTIVITY_STATUSES.has(status)) {
-          res.status(400).json({
-            status: 'error',
-            error: { code: 'VALIDATION_ERROR', message: 'Invalid activity status' },
-          });
+        if (!isOneOf(status, VALID_ACTIVITY_STATUSES)) {
+          sendError(res, 400, 'VALIDATION_ERROR', 'Invalid activity status');
           return;
         }
 
@@ -367,16 +293,9 @@ router.put(
         include: activityInclude,
       });
 
-      res.json({
-        status: 'success',
-        data: updated,
-      });
+      sendSuccess(res, updated);
     } catch (err) {
-      console.error('PUT /activities/:activityId error:', err);
-      res.status(500).json({
-        status: 'error',
-        error: { code: 'INTERNAL_ERROR', message: 'Failed to update activity' },
-      });
+      sendError(res, 500, 'INTERNAL_ERROR', 'Failed to update activity');
     }
   }
 );
@@ -398,11 +317,7 @@ router.delete(
 
       res.status(204).send();
     } catch (err) {
-      console.error('DELETE /activities/:activityId error:', err);
-      res.status(500).json({
-        status: 'error',
-        error: { code: 'INTERNAL_ERROR', message: 'Failed to delete activity' },
-      });
+      sendError(res, 500, 'INTERNAL_ERROR', 'Failed to delete activity');
     }
   }
 );
@@ -426,10 +341,7 @@ router.post(
         });
       } catch (err) {
         if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-          res.status(409).json({
-            status: 'error',
-            error: { code: 'ALREADY_JOINED', message: 'You have already joined this activity' },
-          });
+          sendError(res, 409, 'ALREADY_JOINED', 'You have already joined this activity');
           return;
         }
         throw err;
@@ -440,16 +352,9 @@ router.post(
         include: activityInclude,
       });
 
-      res.json({
-        status: 'success',
-        data: updated,
-      });
+      sendSuccess(res, updated);
     } catch (err) {
-      console.error('POST /activities/:activityId/join error:', err);
-      res.status(500).json({
-        status: 'error',
-        error: { code: 'INTERNAL_ERROR', message: 'Failed to join activity' },
-      });
+      sendError(res, 500, 'INTERNAL_ERROR', 'Failed to join activity');
     }
   }
 );
@@ -474,10 +379,7 @@ router.post(
       });
 
       if (!participation) {
-        res.status(400).json({
-          status: 'error',
-          error: { code: 'NOT_PARTICIPANT', message: 'You are not currently participating in this activity' },
-        });
+        sendError(res, 400, 'NOT_PARTICIPANT', 'You are not currently participating in this activity');
         return;
       }
 
@@ -490,16 +392,9 @@ router.post(
         include: activityInclude,
       });
 
-      res.json({
-        status: 'success',
-        data: updated,
-      });
+      sendSuccess(res, updated);
     } catch (err) {
-      console.error('POST /activities/:activityId/leave error:', err);
-      res.status(500).json({
-        status: 'error',
-        error: { code: 'INTERNAL_ERROR', message: 'Failed to leave activity' },
-      });
+      sendError(res, 500, 'INTERNAL_ERROR', 'Failed to leave activity');
     }
   }
 );
@@ -524,28 +419,19 @@ router.post(
       });
 
       if (!participation) {
-        res.status(403).json({
-          status: 'error',
-          error: { code: 'NOT_PARTICIPANT', message: 'You must join the activity before checking in' },
-        });
+        sendError(res, 403, 'NOT_PARTICIPANT', 'You must join the activity before checking in');
         return;
       }
 
       const { photoUrl, notes } = req.body;
 
       if (photoUrl !== undefined && photoUrl !== null && typeof photoUrl !== 'string') {
-        res.status(400).json({
-          status: 'error',
-          error: { code: 'VALIDATION_ERROR', message: 'photoUrl must be a string if provided' },
-        });
+        sendError(res, 400, 'VALIDATION_ERROR', 'photoUrl must be a string if provided');
         return;
       }
 
       if (notes !== undefined && notes !== null && typeof notes !== 'string') {
-        res.status(400).json({
-          status: 'error',
-          error: { code: 'VALIDATION_ERROR', message: 'notes must be a string if provided' },
-        });
+        sendError(res, 400, 'VALIDATION_ERROR', 'notes must be a string if provided');
         return;
       }
 
@@ -563,16 +449,9 @@ router.post(
         },
       });
 
-      res.status(201).json({
-        status: 'success',
-        data: checkIn,
-      });
+      sendSuccess(res, checkIn, 201);
     } catch (err) {
-      console.error('POST /activities/:activityId/check-in error:', err);
-      res.status(500).json({
-        status: 'error',
-        error: { code: 'INTERNAL_ERROR', message: 'Failed to check in to activity' },
-      });
+      sendError(res, 500, 'INTERNAL_ERROR', 'Failed to check in to activity');
     }
   }
 );

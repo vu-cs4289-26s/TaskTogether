@@ -5,11 +5,11 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import AppNavbar from '@/components/shared/AppNavbar';
 import { listHouseholds, createHousehold } from '@/lib/households';
+import { joinHouseholdApi, sendEmailInviteApi } from '@/lib/households.api';
 import type { Household } from '@/types/households';
 import { getInitials, getAvatarColor } from '@/types/households';
 import AddHouseholdModal from '@/components/modals/AddHouseholdModal';
 import JoinHouseholdModal from '@/components/modals/JoinHouseholdModal';
-import { joinHouseholdApi } from '@/lib/households.api';
 
 
 export default function HouseholdsPage() {
@@ -27,22 +27,33 @@ export default function HouseholdsPage() {
     const [isJoining, setIsJoining] = useState(false);
     const [joinError, setJoinError] = useState<string | null>(null);
 
-    async function handleCreateHousehold(input: { name: string; description?: string }) {
-        try {
-            setIsCreating(true);
-            setCreateError(null);
+  async function handleCreateHousehold(input: { name: string; description?: string; emailsToInvite?: string[] }) {
+    try {
+      setIsCreating(true);
+      setCreateError(null);
 
-            const created = await createHousehold({ name: input.name });
-            setHouseholds((prev) => [created, ...prev]);
-            setIsAddOpen(false);
+      const created = await createHousehold({ name: input.name });
+      setHouseholds((prev) => [created, ...prev]);
+      setIsAddOpen(false);
 
-            router.push(`/households/${created.id}`);
-        } catch {
-            setCreateError('Failed to create household. Please try again.');
-        } finally {
-            setIsCreating(false);
-        }
+      // Send email invites if provided
+      if (input.emailsToInvite && input.emailsToInvite.length > 0) {
+        const invitePromises = input.emailsToInvite.map((email) =>
+          sendEmailInviteApi(created.id, email).catch((err) => {
+            console.error(`Failed to send invite to ${email}:`, err);
+            return null;
+          })
+        );
+        await Promise.all(invitePromises);
+      }
+
+      router.push(`/households/${created.id}`);
+    } catch {
+      setCreateError('Failed to create household. Please try again.');
+    } finally {
+      setIsCreating(false);
     }
+  }
 
     async function handleJoinHousehold(code: string) {
         try {

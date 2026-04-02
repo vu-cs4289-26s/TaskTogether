@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import AuthModal from '@/components/modals/AuthModal';
 import ForgotPasswordModal from '@/components/modals/ForgotPasswordModal';
@@ -10,7 +10,7 @@ import Features from '@/components/landing/Features';
 import HowItWorks from '@/components/landing/HowItWorks';
 import CTASection from '@/components/landing/CTASection';
 import Footer from '@/components/landing/Footer';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import api from '@/lib/api';
 
 function LandingPageContent() {
@@ -29,6 +29,9 @@ function LandingPageContent() {
   const [forgotLoading, setForgotLoading] = useState(false);
 
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirect = searchParams.get('redirect');
+  const initialMode = searchParams.get('mode') as 'login' | 'register' | null;
 
   const openLogin = () => {
     setAuthError(null);
@@ -43,6 +46,14 @@ function LandingPageContent() {
     setModalMode('register');
     setModalOpen(true);
   };
+
+  // Handle redirect and initial mode from URL
+  useEffect(() => {
+    if (initialMode === 'register') {
+      setModalMode('register');
+      setModalOpen(true);
+    }
+  }, [initialMode]);
 
   const openForgotPassword = () => {
     setAuthError(null);
@@ -67,6 +78,11 @@ function LandingPageContent() {
 
       setModalOpen(false);
       setPendingTwoFactorUserId(null);
+      
+      // Handle redirect after successful login
+      if (redirect) {
+        router.push(redirect);
+      }
     } catch (err: unknown) {
       const error = err as { response?: { data?: { error?: { message?: string } } } };
       setAuthError(
@@ -90,6 +106,11 @@ function LandingPageContent() {
       await verifyTwoFactorLogin(pendingTwoFactorUserId, code);
       setPendingTwoFactorUserId(null);
       setModalOpen(false);
+      
+      // Handle redirect after successful 2FA verification
+      if (redirect) {
+        router.push(redirect);
+      }
     } catch (err: unknown) {
       const error = err as { response?: { data?: { error?: { message?: string } } } };
       setAuthError(
@@ -112,11 +133,16 @@ function LandingPageContent() {
       await register(name, email, password);
       setPendingTwoFactorUserId(null);
       setModalOpen(false);
+      
+      // Handle redirect after successful registration
+      if (redirect) {
+        router.push(redirect);
+      }
     } catch (err: unknown) {
       const error = err as { response?: { data?: { error?: { message?: string } } } };
       setAuthError(
         error.response?.data?.error?.message ||
-          'Registration failed. Please try again.'
+        'Registration failed. Please try again.'
       );
     } finally {
       setAuthLoading(false);
@@ -231,5 +257,9 @@ function LandingPageContent() {
 }
 
 export default function Home() {
-  return <LandingPageContent />;
+  return (
+    <Suspense fallback={null}>
+      <LandingPageContent />
+    </Suspense>
+  );
 }

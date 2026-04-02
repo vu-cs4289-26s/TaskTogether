@@ -1,6 +1,7 @@
 import { Response, NextFunction } from 'express';
 import { AuthenticatedRequest } from '../types/index.js';
 import prisma from '../lib/prisma.js';
+import { sendError } from '../utils/responses.js';
 
 /**
  * requireHouseholdMember
@@ -38,21 +39,9 @@ export function requireHouseholdMember(
           .findUnique({ where: { id: targetHouseholdId }, select: { id: true } })
           .then((household) => {
             if (!household) {
-              res.status(404).json({
-                status: 'error',
-                error: {
-                  code: 'HOUSEHOLD_NOT_FOUND',
-                  message: 'Household not found',
-                },
-              });
+              sendError(res, 404, 'HOUSEHOLD_NOT_FOUND', 'Household not found');
             } else {
-              res.status(403).json({
-                status: 'error',
-                error: {
-                  code: 'HOUSEHOLD_UNAUTHORIZED',
-                  message: 'You are not a member of this household',
-                },
-              });
+              sendError(res, 403, 'HOUSEHOLD_UNAUTHORIZED', 'You are not a member of this household');
             }
           });
       }
@@ -80,13 +69,7 @@ export function requireAdmin(
   next: NextFunction
 ): void {
   if (req.userRole !== 'ADMIN') {
-    res.status(403).json({
-      status: 'error',
-      error: {
-        code: 'ADMIN_REQUIRED',
-        message: 'This action requires admin privileges',
-      },
-    });
+    sendError(res, 403, 'ADMIN_REQUIRED', 'This action requires admin privileges');
     return;
   }
 
