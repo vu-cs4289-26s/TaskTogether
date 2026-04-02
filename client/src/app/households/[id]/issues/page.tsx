@@ -20,6 +20,7 @@ import IssueModalHeader from '@/components/issues/IssueHeaderModal';
 import { humanizeEnum, statusBadgeClasses } from '@/lib/issues-display';
 import { issueToForm, toUpdateIssueInput } from '@/lib/issues-form';
 import useDeleteFlow from '@/hooks/useDeleteFlow';
+import useImageUpload from '@/hooks/useImageUpload';
 import { createIssueCommentApi } from '@/lib/issues.api';
 import { uploadImageApi } from '@/lib/upload.api';
 
@@ -88,15 +89,10 @@ export default function IssuesPage() {
     const isAdmin = household?.myRole === 'ADMIN';
 
     //image upload
-    type Preview = { id: string; url: string; file: File };
-
-    function uid() {
-        return Math.random().toString(36).slice(2, 10);
-    }
-
-    const [previews, setPreviews] = useState<Preview[]>([]);
-    const [uploading, setUploading] = useState(false);
-    const [uploadError, setUploadError] = useState<string | null>(null);
+    const {
+        previews, uploading, setUploading, uploadError, setUploadError,
+        addFiles, removePreview, clearPreviews,
+    } = useImageUpload(1);
     const busy = uploading || isSubmitting;
 
     const loadHouseholdData = useCallback(async () => {
@@ -211,7 +207,7 @@ export default function IssuesPage() {
     }
 
     function handleOpenCreate() {
-        clearImageState();
+        clearPreviews();
         setIsDetailOpen(false);
         setSelectedIssue(null);
         setIsEditOpen(false);
@@ -224,7 +220,7 @@ export default function IssuesPage() {
     function handleEditClick(issue: Issue) {
         if (!canEditIssue(issue)) return;
 
-        clearImageState();
+        clearPreviews();
         setUploadError(null);
         setSelectedIssue(issue);
         setEditTarget(issue);
@@ -233,42 +229,6 @@ export default function IssuesPage() {
         setSubmitError(null);
     }
 
-    function validateFiles(files: File[]) {
-        const ok: File[] = [];
-        for (const f of files) {
-            if (!f.type.startsWith('image/')) continue;
-            if (f.size > 10 * 1024 * 1024) continue;
-            ok.push(f);
-        }
-        return ok;
-    }
-
-    function addFiles(filesLike: FileList | File[]) {
-        const files = validateFiles(Array.from(filesLike));
-        if (files.length === 0) return;
-
-        for (const p of previews) URL.revokeObjectURL(p.url);
-
-        const file = files[0];
-        const url = URL.createObjectURL(file);
-
-        setPreviews([{ id: uid(), url, file }]);
-        setUploadError(null);
-    }
-
-    function removePreview(id: string) {
-        setPreviews((prev) => {
-            const found = prev.find((p) => p.id === id);
-            if (found) URL.revokeObjectURL(found.url);
-            return prev.filter((p) => p.id !== id);
-        });
-    }
-
-    function clearImageState() {
-        previews.forEach((p) => URL.revokeObjectURL(p.url));
-        setPreviews([]);
-        setUploadError(null);
-    }
 
     async function handleStatusChange(issueId: string, status: IssueStatus) {
         if (!householdId) return;
@@ -343,7 +303,7 @@ export default function IssuesPage() {
 
             setIssues((prev) => [created, ...prev]);
             setIsReportOpen(false);
-            clearImageState();
+            clearPreviews();
         } catch (e) {
             setSubmitError(e instanceof Error ? e.message : 'Failed to create issue.');
         } finally {
@@ -386,7 +346,7 @@ export default function IssuesPage() {
             setSelectedIssue(updated);
             setEditTarget(updated);
             setIsEditOpen(false);
-            clearImageState();
+            clearPreviews();
             setSubmitError(null);
         } catch (e) {
             setSubmitError(e instanceof Error ? e.message : 'Failed to update issue.');
@@ -809,7 +769,7 @@ export default function IssuesPage() {
                         setIsReportOpen(false);
                         setSubmitError(null);
                         setUploadError(null);
-                        clearImageState();
+                        clearPreviews();
                     }}
                     onSubmit={handleCreate}
                 />
@@ -834,7 +794,7 @@ export default function IssuesPage() {
                         setEditTarget(null);
                         setSubmitError(null);
                         setUploadError(null);
-                        clearImageState();
+                        clearPreviews();
                     }}
                     onSubmit={handleEditSubmit}
                 />

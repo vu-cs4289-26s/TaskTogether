@@ -1,4 +1,5 @@
 import api from '@/lib/api';
+import { buildQueryString } from '@/lib/queryParams';
 import type {
   Activity,
   CreateActivityInput,
@@ -12,14 +13,13 @@ export async function listActivitiesApi(
   householdId: string,
   params?: { page?: number; limit?: number; status?: string; activityType?: string }
 ): Promise<{ activities: Activity[]; meta: PaginationMeta }> {
-  const query = new URLSearchParams();
-  if (params?.page) query.set('page', String(params.page));
-  if (params?.limit) query.set('limit', String(params.limit));
-  if (params?.status) query.set('status', params.status);
-  if (params?.activityType) query.set('activityType', params.activityType);
-
-  const qs = query.toString();
-  const res = await api.get(`/households/${householdId}/activities${qs ? `?${qs}` : ''}`);
+  const qs = buildQueryString({
+    page: params?.page,
+    limit: params?.limit,
+    status: params?.status,
+    activityType: params?.activityType,
+  });
+  const res = await api.get(`/households/${householdId}/activities${qs}`);
   return { activities: res.data.data, meta: res.data.meta };
 }
 

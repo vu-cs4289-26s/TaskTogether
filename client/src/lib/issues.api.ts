@@ -1,4 +1,5 @@
 import api from '@/lib/api';
+import { buildQueryString } from '@/lib/queryParams';
 import type {
     Issue,
     CreateIssueInput,
@@ -54,13 +55,12 @@ export async function listIssuesApi(
     householdId: string,
     params?: { page?: number; limit?: number; status?: string }
 ): Promise<{ issues: Issue[]; meta: PaginationMeta }> {
-    const query = new URLSearchParams();
-    if (params?.page) query.set('page', String(params.page));
-    if (params?.limit) query.set('limit', String(params.limit));
-    if (params?.status) query.set('status', params.status);
-
-    const qs = query.toString();
-    const res = await api.get(`/households/${householdId}/issues${qs ? `?${qs}` : ''}`);
+    const qs = buildQueryString({
+        page: params?.page,
+        limit: params?.limit,
+        status: params?.status,
+    });
+    const res = await api.get(`/households/${householdId}/issues${qs}`);
     return { issues: res.data.data, meta: res.data.meta };
 }
 

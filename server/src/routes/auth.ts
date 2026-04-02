@@ -2,11 +2,11 @@ import { Router, Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
-import nodemailer from "nodemailer";
 import { authenticate } from "../middleware/authentication.js";
 import { AuthenticatedRequest } from "../types/index.js";
 import prisma from "../lib/prisma.js";
 import { sendError, sendSuccess } from "../utils/responses.js";
+import { sendEmail } from "../utils/sendEmail.js";
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
@@ -139,34 +139,10 @@ async function sendPasswordResetEmail(
   email: string,
   resetUrl: string,
 ): Promise<void> {
-  const smtpHost = process.env.SMTP_HOST;
-  const smtpPort = process.env.SMTP_PORT
-    ? Number(process.env.SMTP_PORT)
-    : undefined;
-  const smtpUser = process.env.SMTP_USER;
-  const smtpPass = process.env.SMTP_PASS;
   const from = process.env.SMTP_FROM || "noreply@tasktogether.local";
-
-  if (!smtpHost || !smtpPort || !smtpUser || !smtpPass) {
-    console.log("\n[TaskTogether Password Reset]");
-    console.log(`To: ${email}`);
-    console.log(`Reset link: ${resetUrl}\n`);
-    return;
-  }
-
-  const transporter = nodemailer.createTransport({
-    host: smtpHost,
-    port: smtpPort,
-    secure: smtpPort === 465,
-    auth: {
-      user: smtpUser,
-      pass: smtpPass,
-    },
-  });
-
-  await transporter.sendMail({
-    from,
+  await sendEmail({
     to: email,
+    from,
     subject: "Reset your TaskTogether password",
     text: `We received a request to reset your password. Use the link below to set a new password:\n\n${resetUrl}\n\nThis link will expire in 1 hour.\n\nIf you did not request this, you can ignore this email.`,
     html: `
@@ -182,34 +158,10 @@ async function sendTwoFactorCodeEmail(
   email: string,
   code: string,
 ): Promise<void> {
-  const smtpHost = process.env.SMTP_HOST;
-  const smtpPort = process.env.SMTP_PORT
-    ? Number(process.env.SMTP_PORT)
-    : undefined;
-  const smtpUser = process.env.SMTP_USER;
-  const smtpPass = process.env.SMTP_PASS;
   const from = process.env.SMTP_FROM || "noreply@tasktogether.local";
-
-  if (!smtpHost || !smtpPort || !smtpUser || !smtpPass) {
-    console.log("\n[TaskTogether 2FA Code]");
-    console.log(`To: ${email}`);
-    console.log(`2FA code: ${code}\n`);
-    return;
-  }
-
-  const transporter = nodemailer.createTransport({
-    host: smtpHost,
-    port: smtpPort,
-    secure: smtpPort === 465,
-    auth: {
-      user: smtpUser,
-      pass: smtpPass,
-    },
-  });
-
-  await transporter.sendMail({
-    from,
+  await sendEmail({
     to: email,
+    from,
     subject: "Your TaskTogether verification code",
     text: `Your TaskTogether verification code is: ${code}\n\nThis code will expire in 10 minutes.`,
     html: `

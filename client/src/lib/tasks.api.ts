@@ -1,4 +1,5 @@
 import api from '@/lib/api';
+import { buildQueryString } from '@/lib/queryParams';
 import type { Task, CreateTaskInput, UpdateTaskInput, CompleteTaskInput, TaskAssignment } from '@/types/tasks';
 import type { PaginationMeta } from '@/types/households';
 
@@ -13,16 +14,15 @@ export async function listTasksApi(
     isRecurring?: boolean;
   }
 ): Promise<{ tasks: Task[]; meta: PaginationMeta }> {
-  const query = new URLSearchParams();
-  if (params?.page) query.set('page', String(params.page));
-  if (params?.limit) query.set('limit', String(params.limit));
-  if (params?.assignedToMe) query.set('assignedToMe', 'true');
-  if (params?.unassigned) query.set('unassigned', 'true');
-  if (params?.status) query.set('status', params.status);
-  if (params?.isRecurring !== undefined) query.set('isRecurring', String(params.isRecurring));
-
-  const qs = query.toString();
-  const res = await api.get(`/households/${householdId}/tasks${qs ? `?${qs}` : ''}`);
+  const qs = buildQueryString({
+    page: params?.page,
+    limit: params?.limit,
+    assignedToMe: params?.assignedToMe || undefined,
+    unassigned: params?.unassigned || undefined,
+    status: params?.status,
+    isRecurring: params?.isRecurring,
+  });
+  const res = await api.get(`/households/${householdId}/tasks${qs}`);
   return { tasks: res.data.data, meta: res.data.meta };
 }
 

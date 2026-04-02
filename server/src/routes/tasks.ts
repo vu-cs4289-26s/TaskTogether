@@ -13,13 +13,14 @@ import {
 } from "../lib/notifications.js";
 import { generateNextOccurrence } from "../lib/taskRecurrence.js";
 import { sendError, sendSuccess, sendPaginated } from "../utils/responses.js";
+import { userSelect } from "../utils/selects.js";
+import { parsePagination } from "../utils/pagination.js";
+import { requireString, isOneOf } from "../utils/validation.js";
 
 // mergeParams: true lets requireHouseholdMember read :id from the parent route
 const router = Router({ mergeParams: true });
 
 router.use(authenticate);
-
-const userSelect = { id: true, name: true, email: true, avatar: true } as const;
 
 const VALID_RECURRENCE_PATTERNS = ["daily", "weekly", "monthly"] as const;
 const VALID_PRIORITIES = ["low", "medium", "high"] as const;
@@ -36,12 +37,7 @@ router.get(
   requireHouseholdMember,
   async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
-      const page = Math.max(1, parseInt(req.query.page as string) || 1);
-      const limit = Math.min(
-        50,
-        Math.max(1, parseInt(req.query.limit as string) || 20),
-      );
-      const skip = (page - 1) * limit;
+      const {page, limit, skip} = parsePagination(req.query);
       const unreadOnly = req.query.unreadOnly === "true";
 
       const where = {
@@ -160,43 +156,21 @@ router.post(
       } = req.body;
 
       // --- Validation ---
-      if (!title || typeof title !== "string" || title.trim().length === 0) {
-        sendError(res, 400, "VALIDATION_ERROR", "Task title is required");
+      const trimmedTitle = requireString(title, MAX_TITLE_LENGTH);
+      if (!trimmedTitle) {
+        sendError(res, 400, "VALIDATION_ERROR", `Task title is required (max ${MAX_TITLE_LENGTH} characters)`);
         return;
       }
 
-      if (title.trim().length > MAX_TITLE_LENGTH) {
-        sendError(
-          res,
-          400,
-          "VALIDATION_ERROR",
-          `Title must be ${MAX_TITLE_LENGTH} characters or fewer`,
-        );
-        return;
-      }
-
-      if (priority !== undefined && !VALID_PRIORITIES.includes(priority)) {
-        sendError(
-          res,
-          400,
-          "VALIDATION_ERROR",
-          'priority must be "low", "medium", or "high"',
-        );
+      if (priority !== undefined && !isOneOf(priority, VALID_PRIORITIES)) {
+        sendError(res, 400, "VALIDATION_ERROR", 'priority must be "low", "medium", or "high"');
         return;
       }
 
       const effectiveIsRecurring = isRotating ? true : isRecurring;
 
-      if (
-        effectiveIsRecurring &&
-        !VALID_RECURRENCE_PATTERNS.includes(recurrencePattern)
-      ) {
-        sendError(
-          res,
-          400,
-          "VALIDATION_ERROR",
-          'recurrencePattern must be "daily", "weekly", or "monthly" when isRecurring is true',
-        );
+      if (effectiveIsRecurring && !isOneOf(recurrencePattern, VALID_RECURRENCE_PATTERNS)) {
+        sendError(res, 400, "VALIDATION_ERROR", 'recurrencePattern must be "daily", "weekly", or "monthly" when isRecurring is true');
         return;
       }
 
@@ -255,8 +229,8 @@ router.post(
       const task = await prisma.$transaction(async (tx) => {
         const newTask = await tx.task.create({
           data: {
-            title: title.trim(),
-            description: description?.trim() ?? null,
+            title: trimmedTitle,
+            description: requireString(description) ?? null,
             dueDate: parsedDueDate ?? null,
             priority: priority ?? "medium",
             isRecurring: effectiveIsRecurring,
@@ -293,7 +267,7 @@ router.post(
           userId: assignedToUserId,
           householdId: req.householdId!,
           type: "TASK_ASSIGNED",
-          message: `You have been assigned the task "${title.trim()}"`,
+          message: `You have been assigned the task "${trimmedTitle}"`,
           payload: { taskId: task!.id, taskTitle: task!.title },
         }).catch(console.error);
       }
@@ -305,7 +279,7 @@ router.post(
         householdId: req.householdId!,
         excludeUserIds: excludeIds,
         type: "TASK_ASSIGNED",
-        message: `New task "${title.trim()}" was created`,
+        message: `New task "${trimmedTitle}" was created`,
         payload: { taskId: task!.id, taskTitle: task!.title },
       }).catch(console.error);
 
@@ -322,12 +296,7 @@ router.get(
   requireHouseholdMember,
   async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
-      const page = Math.max(1, parseInt(req.query.page as string) || 1);
-      const limit = Math.min(
-        50,
-        Math.max(1, parseInt(req.query.limit as string) || 20),
-      );
-      const skip = (page - 1) * limit;
+      const {page, limit, skip} = parsePagination(req.query);
 
       // Build dynamic where clause
       const where: Record<string, unknown> = { householdId: req.householdId };
@@ -451,29 +420,13 @@ router.put(
       } = req.body;
 
       // Validate title if provided
-      if (title !== undefined) {
-        if (typeof title !== "string" || title.trim().length === 0) {
-          sendError(res, 400, "VALIDATION_ERROR", "Task title cannot be empty");
-          return;
-        }
-        if (title.trim().length > MAX_TITLE_LENGTH) {
-          sendError(
-            res,
-            400,
-            "VALIDATION_ERROR",
-            `Title must be ${MAX_TITLE_LENGTH} characters or fewer`,
-          );
-          return;
-        }
+      if (title !== undefined && !requireString(title, MAX_TITLE_LENGTH)) {
+        sendError(res, 400, "VALIDATION_ERROR", `Task title is required (max ${MAX_TITLE_LENGTH} characters)`);
+        return;
       }
 
-      if (priority !== undefined && !VALID_PRIORITIES.includes(priority)) {
-        sendError(
-          res,
-          400,
-          "VALIDATION_ERROR",
-          'priority must be "low", "medium", or "high"',
-        );
+      if (priority !== undefined && !isOneOf(priority, VALID_PRIORITIES)) {
+        sendError(res, 400, "VALIDATION_ERROR", 'priority must be "low", "medium", or "high"');
         return;
       }
 
@@ -483,16 +436,8 @@ router.put(
           : (isRecurring ?? task.isRecurring);
       const effectivePattern = recurrencePattern ?? task.recurrencePattern;
 
-      if (
-        effectiveIsRecurring &&
-        !VALID_RECURRENCE_PATTERNS.includes(effectivePattern)
-      ) {
-        sendError(
-          res,
-          400,
-          "VALIDATION_ERROR",
-          'recurrencePattern must be "daily", "weekly", or "monthly" when isRecurring is true',
-        );
+      if (effectiveIsRecurring && !isOneOf(effectivePattern, VALID_RECURRENCE_PATTERNS)) {
+        sendError(res, 400, "VALIDATION_ERROR", 'recurrencePattern must be "daily", "weekly", or "monthly" when isRecurring is true');
         return;
       }
 
@@ -520,9 +465,9 @@ router.put(
       const updated = await prisma.task.update({
         where: { id: task.id },
         data: {
-          ...(title !== undefined ? { title: title.trim() } : {}),
+          ...(title !== undefined ? { title: requireString(title)! } : {}),
           ...(description !== undefined
-            ? { description: description?.trim() ?? null }
+            ? { description: requireString(description) ?? null }
             : {}),
           ...(parsedDueDate !== undefined ? { dueDate: parsedDueDate } : {}),
           ...(isRecurring !== undefined

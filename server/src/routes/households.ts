@@ -10,14 +10,14 @@ import { AuthenticatedRequest } from '../types/index.js';
 import prisma from '../lib/prisma.js';
 import { sendEmail } from '../utils/sendEmail.js';
 import { sendError, sendSuccess, sendPaginated } from '../utils/responses.js';
+import { userSelect } from '../utils/selects.js';
+import { parsePagination } from '../utils/pagination.js';
 
 const router = Router();
 
 // All household routes require authentication
 router.use(authenticate);
 
-// Reusable select for user fields (never leak password)
-const userSelect = { id: true, name: true, email: true, avatar: true } as const;
 
 // Reusable include for household with members
 const householdWithMembers = {
@@ -39,10 +39,7 @@ router.get(
   '/',
   async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
-      const page = Math.max(1, parseInt(req.query.page as string) || 1);
-      const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string) || 20));
-      const skip = (page - 1) * limit;
-
+      const {page, limit, skip} = parsePagination(req.query);
       const [memberships, total] = await Promise.all([
         prisma.householdMember.findMany({
           where: { userId: req.userId },

@@ -5,21 +5,14 @@ import { AuthenticatedRequest } from '../types/index.js';
 import prisma from '../lib/prisma.js';
 import { createNotification, broadcastNotification } from '../lib/notifications.js';
 import { sendError, sendSuccess } from '../utils/responses.js';
+import { userSelect } from '../utils/selects.js';
+import { requireString, isOneOf } from '../utils/validation.js';
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
 
-const userSelect = { id: true, name: true, email: true, avatar: true } as const;
-
-const ISSUE_TYPES = new Set([
-    'MAINTENANCE',
-    'HOUSEMATE_CONFLICT',
-    'NOISE_COMPLAINT',
-    'CLEANLINESS',
-    'OTHER',
-]);
-
-const ISSUE_PRIORITIES = new Set(['URGENT', 'MEDIUM', 'LOW']);
+const ISSUE_TYPES = ['MAINTENANCE', 'HOUSEMATE_CONFLICT', 'NOISE_COMPLAINT', 'CLEANLINESS', 'OTHER'] as const;
+const ISSUE_PRIORITIES = ['URGENT', 'MEDIUM', 'LOW'] as const;
 
 // POST / — Create an issue (any household member)
 // TODO: Validate title is required and non-empty
@@ -33,25 +26,26 @@ router.post(
         try {
             const { title, description, photoUrl, type, priority, isAnonymous } = req.body;
 
-            if (!title || !title.trim()) {
+            const trimmedTitle = requireString(title);
+            if (!trimmedTitle) {
                 sendError(res, 400, 'VALIDATION_ERROR', 'Title is required');
                 return;
             }
 
-            if (!type || !ISSUE_TYPES.has(type)) {
+            if (!isOneOf(type, ISSUE_TYPES)) {
                 sendError(res, 400, 'VALIDATION_ERROR', 'Invalid issue type');
                 return;
             }
 
-            if (!priority || !ISSUE_PRIORITIES.has(priority)) {
+            if (!isOneOf(priority, ISSUE_PRIORITIES)) {
                 sendError(res, 400, 'VALIDATION_ERROR', 'Invalid priority');
                 return;
             }
 
             const issue = await prisma.issue.create({
                 data: {
-                    title: title.trim(),
-                    description: typeof description === 'string' && description.trim() ? description.trim() : null,
+                    title: trimmedTitle,
+                    description: requireString(description) ?? null,
                     photoUrl: photoUrl ?? null,
 
                     type,       // Prisma enum value
@@ -187,10 +181,16 @@ router.put(
             const data: any = {};
 
             // Reporter OR Admin: allowed fields
-            if (typeof title === 'string') data.title = title.trim();
-            if (description === null || typeof description === 'string') {
-                const trimmed = typeof description === 'string' ? description.trim() : null;
-                data.description = trimmed ? trimmed : null;
+            if (title !== undefined) {
+                const trimmed = requireString(title);
+                if (!trimmed) {
+                    sendError(res, 400, 'VALIDATION_ERROR', 'Title cannot be empty');
+                    return;
+                }
+                data.title = trimmed;
+            }
+            if (description !== undefined) {
+                data.description = requireString(description) ?? null;
             }
             if (photoUrl === null || typeof photoUrl === 'string') data.photoUrl = photoUrl;
             if (type) data.type = type;
@@ -204,12 +204,6 @@ router.put(
                     return;
                 }
                 data.status = status;
-            }
-
-            // Validate title if present
-            if ('title' in data && !data.title) {
-                sendError(res, 400, 'VALIDATION_ERROR', 'Title cannot be empty');
-                return;
             }
 
             const updated = await prisma.issue.update({
@@ -412,17 +406,23 @@ router.put(
 
             const data: any = {};
 
-            if (typeof title === 'string') data.title = title.trim();
+            if (title !== undefined) {
+                const trimmed = requireString(title);
+                if (!trimmed) {
+                    sendError(res, 400, 'VALIDATION_ERROR', 'Title cannot be empty');
+                    return;
+                }
+                data.title = trimmed;
+            }
 
-            if (description === null || typeof description === 'string') {
-                const trimmed = typeof description === 'string' ? description.trim() : null;
-                data.description = trimmed ? trimmed : null;
+            if (description !== undefined) {
+                data.description = requireString(description) ?? null;
             }
 
             if (photoUrl === null || typeof photoUrl === 'string') data.photoUrl = photoUrl;
 
             if (type !== undefined) {
-                if (!ISSUE_TYPES.has(type)) {
+                if (!isOneOf(type, ISSUE_TYPES)) {
                     sendError(res, 400, 'VALIDATION_ERROR', 'Invalid issue type');
                     return;
                 }
@@ -430,7 +430,7 @@ router.put(
             }
 
             if (priority !== undefined) {
-                if (!ISSUE_PRIORITIES.has(priority)) {
+                if (!isOneOf(priority, ISSUE_PRIORITIES)) {
                     sendError(res, 400, 'VALIDATION_ERROR', 'Invalid priority');
                     return;
                 }
@@ -446,11 +446,6 @@ router.put(
                 }
 
                 data.status = status;
-            }
-
-            if ('title' in data && !data.title) {
-                sendError(res, 400, 'VALIDATION_ERROR', 'Title cannot be empty');
-                return;
             }
 
             const oldStatus = issue.status;

@@ -5,18 +5,15 @@ import { requireHouseholdMember, requireAdmin } from '../middleware/authorizatio
 import { AuthenticatedRequest } from '../types/index.js';
 import prisma from '../lib/prisma.js';
 import {sendError, sendSuccess, sendPaginated} from '../utils/responses.js';
+import { userSelect } from '../utils/selects.js';
+import { parsePagination } from '../utils/pagination.js';
+import { requireString, isOneOf } from '../utils/validation.js';
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
 
-const userSelect = { id: true, name: true, email: true, avatar: true } as const;
-const VALID_ACTIVITY_TYPES = new Set<ActivityType>(['HOMEWORK', 'BONDING', 'CHORE', 'OTHER']);
-const VALID_ACTIVITY_STATUSES = new Set<ActivityStatus>([
-  'SCHEDULED',
-  'IN_PROGRESS',
-  'COMPLETED',
-  'CANCELLED',
-]);
+const VALID_ACTIVITY_TYPES = ['HOMEWORK', 'BONDING', 'CHORE', 'OTHER'] as const;
+const VALID_ACTIVITY_STATUSES = ['SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] as const;
 
 const activityInclude = {
   participants: {
@@ -101,12 +98,13 @@ router.post(
     try {
       const { title, description, activityType, scheduledAt, participantUserIds } = req.body;
 
-      if (typeof title !== 'string' || title.trim().length === 0) {
+      const trimmedTitle = requireString(title);
+      if (!trimmedTitle) {
         sendError(res, 400, 'VALIDATION_ERROR', 'Activity title is required');
         return;
       }
 
-      if (!VALID_ACTIVITY_TYPES.has(activityType)) {
+      if (!isOneOf(activityType, VALID_ACTIVITY_TYPES)) {
         sendError(res, 400, 'VALIDATION_ERROR', 'activityType must be one of HOMEWORK, BONDING, CHORE, or OTHER');
         return;
       }
@@ -133,11 +131,8 @@ router.post(
 
       const activity = await prisma.qualityTimeActivity.create({
         data: {
-          title: title.trim(),
-          description:
-            typeof description === 'string' && description.trim().length > 0
-              ? description.trim()
-              : null,
+          title: trimmedTitle,
+          description: requireString(description) ?? null,
           activityType,
           scheduledAt: parsedScheduledAt,
           householdId: req.householdId!,
@@ -165,20 +160,15 @@ router.get(
   requireHouseholdMember,
   async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
-      const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
-      const limit = Math.min(200, Math.max(1, parseInt(req.query.limit as string, 10) || 20));
-      const skip = (page - 1) * limit;
+      const {page, limit, skip} = parsePagination(req.query, 200);
       const { status, activityType } = req.query;
 
-      if (status && (typeof status !== 'string' || !VALID_ACTIVITY_STATUSES.has(status as ActivityStatus))) {
+      if (status && !isOneOf(status, VALID_ACTIVITY_STATUSES)) {
         sendError(res, 400, 'VALIDATION_ERROR', 'Invalid activity status filter');
         return;
       }
 
-      if (
-        activityType &&
-        (typeof activityType !== 'string' || !VALID_ACTIVITY_TYPES.has(activityType as ActivityType))
-      ) {
+      if (activityType && !isOneOf(activityType, VALID_ACTIVITY_TYPES)) {
         sendError(res, 400, 'VALIDATION_ERROR', 'Invalid activity type filter');
         return;
       }
@@ -246,26 +236,20 @@ router.put(
       const data: Prisma.QualityTimeActivityUpdateInput = {};
 
       if (title !== undefined) {
-        if (typeof title !== 'string' || title.trim().length === 0) {
+        const trimmed = requireString(title);
+        if (!trimmed) {
           sendError(res, 400, 'VALIDATION_ERROR', 'Activity title cannot be empty');
           return;
         }
-        data.title = title.trim();
+        data.title = trimmed;
       }
 
       if (description !== undefined) {
-        if (description !== null && typeof description !== 'string') {
-          sendError(res, 400, 'VALIDATION_ERROR', 'description must be a string or null');
-          return;
-        }
-        data.description =
-          typeof description === 'string' && description.trim().length > 0
-            ? description.trim()
-            : null;
+        data.description = requireString(description) ?? null;
       }
 
       if (activityType !== undefined) {
-        if (!VALID_ACTIVITY_TYPES.has(activityType)) {
+        if (!isOneOf(activityType, VALID_ACTIVITY_TYPES)) {
           sendError(res, 400, 'VALIDATION_ERROR', 'Invalid activityType');
           return;
         }
@@ -282,7 +266,7 @@ router.put(
       }
 
       if (status !== undefined) {
-        if (!VALID_ACTIVITY_STATUSES.has(status)) {
+        if (!isOneOf(status, VALID_ACTIVITY_STATUSES)) {
           sendError(res, 400, 'VALIDATION_ERROR', 'Invalid activity status');
           return;
         }

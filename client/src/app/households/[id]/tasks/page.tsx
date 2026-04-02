@@ -18,6 +18,8 @@ import type { Task } from '@/types/tasks';
 import { priorityStyles, priorityLabels, formatDueDate, isTaskCompleted, compareTasksByUrgency } from '@/lib/task-helpers';
 import TaskDetailModal, { type TaskDetailInput } from '@/components/modals/CreateTaskModal';
 import CompleteTaskModal from '@/components/modals/CompleteTaskModal';
+import TaskDeleteModal from '@/components/tasks/TaskDeleteModal';
+import useDeleteFlow from '@/hooks/useDeleteFlow';
 import { CheckCircle2, Pencil, Plus, Calendar, RotateCw, AlertCircle } from 'lucide-react';
 
 
@@ -288,6 +290,17 @@ export default function TasksPage() {
   const [completeSubmitting, setCompleteSubmitting] = useState(false);
   const [completeError, setCompleteError] = useState<string | null>(null);
 
+  // Delete modal state
+  const {
+    isDeleteOpen,
+    deleteTarget,
+    isDeleting,
+    setIsDeleting,
+    openDelete,
+    closeDelete,
+    forceCloseDelete,
+  } = useDeleteFlow<Task>();
+
   /* ----- Data fetching ----- */
   const fetchAll = useCallback(async () => {
     if (!householdId) return;
@@ -407,17 +420,23 @@ export default function TasksPage() {
     }
   }
 
-  async function handleDeleteTask() {
-    if (!householdId || !editingTask) return;
-    setTaskSubmitting(true);
+  function handleDeleteTask() {
+    if (!editingTask) return;
+    setTaskModalOpen(false);
+    openDelete(editingTask);
+  }
+
+  async function confirmDeleteTask(taskId: string) {
+    if (!householdId) return;
     try {
-      await deleteTaskApi(householdId, editingTask.id);
-      setTaskModalOpen(false);
-      await fetchAll();
+      setIsDeleting(true);
+      await deleteTaskApi(householdId, taskId);
+      setTasks((prev) => prev.filter((t) => t.id !== taskId));
+      forceCloseDelete();
     } catch (err) {
       setTaskError(err instanceof Error ? err.message : 'Failed to delete task');
     } finally {
-      setTaskSubmitting(false);
+      setIsDeleting(false);
     }
   }
 
@@ -551,6 +570,15 @@ export default function TasksPage() {
         onClose={() => setTaskModalOpen(false)}
         onSave={handleSaveTask}
         onDelete={taskModalMode === 'edit' ? handleDeleteTask : undefined}
+      />
+
+      {/* Delete Task Modal */}
+      <TaskDeleteModal
+        open={isDeleteOpen}
+        task={deleteTarget}
+        isDeleting={isDeleting}
+        onClose={closeDelete}
+        onConfirm={confirmDeleteTask}
       />
 
       {/* Complete Task Modal */}

@@ -5,12 +5,7 @@ import BaseModal from '@/components/modals/BaseModal';
 import Button from '@/components/ui/Button';
 import Field, { inputClass } from '@/components/ui/Field';
 import { uploadImageApi } from '@/lib/upload.api';
-
-type Preview = { id: string; url: string; file: File };
-
-function uid() {
-  return Math.random().toString(36).slice(2, 10);
-}
+import useImageUpload from '@/hooks/useImageUpload';
 
 type Props = {
   open: boolean;
@@ -32,56 +27,23 @@ export default function CompleteTaskModal({
   const [notes, setNotes] = useState('');
   const notesRef = useRef<HTMLTextAreaElement | null>(null);
 
-  // Photo upload state
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
-  const [previews, setPreviews] = useState<Preview[]>([]);
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
+  const {
+    previews, uploading, setUploading, uploadError, setUploadError,
+    addFiles, removePreview, clearPreviews,
+  } = useImageUpload(1);
 
   useEffect(() => {
     if (!open) {
       setNotes('');
-      setPreviews([]);
+      clearPreviews();
       setIsDragOver(false);
       setUploading(false);
-      setUploadError(null);
       return;
     }
     queueMicrotask(() => notesRef.current?.focus());
-  }, [open]);
-
-  function validateFiles(files: File[]) {
-    const ok: File[] = [];
-    for (const f of files) {
-      if (!f.type.startsWith('image/')) continue;
-      if (f.size > 10 * 1024 * 1024) continue; // 10 MB
-      ok.push(f);
-    }
-    return ok;
-  }
-
-  function addFiles(filesLike: FileList | File[]) {
-    const files = validateFiles(Array.from(filesLike));
-    if (files.length === 0) return;
-
-    // Only keep the latest photo (single image for task completion)
-    // Revoke old previews
-    for (const p of previews) URL.revokeObjectURL(p.url);
-
-    const file = files[0];
-    const url = URL.createObjectURL(file);
-    setPreviews([{ id: uid(), url, file }]);
-    setUploadError(null);
-  }
-
-  function removePreview(id: string) {
-    setPreviews((prev) => {
-      const found = prev.find((p) => p.id === id);
-      if (found) URL.revokeObjectURL(found.url);
-      return prev.filter((p) => p.id !== id);
-    });
-  }
+  }, [open, clearPreviews, setUploading]);
 
   async function submit() {
     let photoUrl: string | undefined;
