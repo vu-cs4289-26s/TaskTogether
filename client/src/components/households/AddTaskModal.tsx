@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { HouseholdMember } from '@/types/households';
 import type { CreateTaskInput, UpdateTaskInput, Task, TaskPriority, RecurrencePattern } from '@/types/tasks';
+import TaskDeleteModal from '@/components/tasks/TaskDeleteModal';
+import useDeleteFlow from '@/hooks/useDeleteFlow';
 
 type Props = {
   open: boolean;
@@ -45,9 +47,19 @@ export default function AddTaskModal({
   const [recurrencePattern, setRecurrencePattern] = useState<RecurrencePattern>('weekly');
   const [isRotating, setIsRotating] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const titleInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Delete flow
+  const {
+    isDeleteOpen,
+    deleteTarget,
+    isDeleting,
+    setIsDeleting,
+    openDelete,
+    closeDelete,
+    forceCloseDelete,
+  } = useDeleteFlow<Task>();
 
   useEffect(() => {
     if (!open) {
@@ -60,7 +72,6 @@ export default function AddTaskModal({
       setRecurrencePattern('weekly');
       setIsRotating(false);
       setLocalError(null);
-      setShowDeleteConfirm(false);
       return;
     }
 
@@ -302,44 +313,38 @@ export default function AddTaskModal({
             </div>
           )}
 
-          <div className="flex gap-4 justify-between mt-6">
-            {/* Delete button (edit mode only) */}
-            {isEditMode && onDelete && (
-              <div>
-                {showDeleteConfirm ? (
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-text-secondary">Delete?</span>
-                    <button
-                      type="button"
-                      onClick={() => onDelete()}
-                      disabled={isSubmitting}
-                      className="px-3 py-1.5 rounded-sm bg-urgent text-white text-sm font-medium transition hover:opacity-90 disabled:opacity-60"
-                    >
-                      Yes
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowDeleteConfirm(false)}
-                      disabled={isSubmitting}
-                      className="px-3 py-1.5 rounded-sm border border-divider text-text-primary text-sm font-medium transition hover:bg-base disabled:opacity-60"
-                    >
-                      No
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setShowDeleteConfirm(true)}
-                    disabled={isSubmitting}
-                    className="px-4 py-3 rounded-sm border border-urgent text-urgent font-medium transition hover:bg-urgent/10 disabled:opacity-60"
-                  >
-                    Delete
-                  </button>
-                )}
-              </div>
-            )}
+      {/* Delete confirmation modal */}
+      <TaskDeleteModal
+        open={isDeleteOpen}
+        task={deleteTarget}
+        isDeleting={isDeleting}
+        onClose={closeDelete}
+        onConfirm={async () => {
+          if (!onDelete) return;
+          try {
+            setIsDeleting(true);
+            await onDelete();
+            forceCloseDelete();
+          } finally {
+            setIsDeleting(false);
+          }
+        }}
+      />
 
-            <div className="flex gap-4 ml-auto">
+      <div className="flex gap-4 justify-between mt-6">
+        {/* Delete button (edit mode only) */}
+        {isEditMode && onDelete && (
+          <button
+            type="button"
+            onClick={() => editingTask && openDelete(editingTask)}
+            disabled={isSubmitting}
+            className="px-4 py-3 rounded-sm border border-urgent text-urgent font-medium transition hover:bg-urgent/10 disabled:opacity-60"
+          >
+            Delete
+          </button>
+        )}
+
+        <div className="flex gap-4 ml-auto">
               <button
                 type="button"
                 onClick={onClose}
