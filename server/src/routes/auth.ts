@@ -420,7 +420,7 @@ router.post("/google", async (req: Request, res: Response): Promise<void> => {
     sendSuccess(res, { user: sanitizeUser(user), token });
   } catch (error) {
     if (error instanceof Error) {
-      sendError(res, 401, "AUTH_GOOGLE_FAILED", e.message);
+      sendError(res, 401, "AUTH_GOOGLE_FAILED", error.message);
     } else {
       sendError(
         res,
