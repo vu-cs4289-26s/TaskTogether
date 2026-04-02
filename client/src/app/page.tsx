@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, Suspense } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import AuthModal from '@/components/modals/AuthModal';
 import ForgotPasswordModal from '@/components/modals/ForgotPasswordModal';
