@@ -6,7 +6,7 @@ import ReportIssueModal, { type ReportIssueFormValues } from '@/components/modal
 import IssueDetailPanel from './IssueDetailPanel';
 import { useRouter } from 'next/navigation';
 import IssueDeleteModal from './IssueDeleteModal';
-import useDeleteFlow from '@/hook/useDeleteFlow';
+import useDeleteFlow from '@/hooks/useDeleteFlow';
 import { uploadImageApi } from '@/lib/upload.api';
 
 import {

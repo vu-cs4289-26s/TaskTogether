@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate } from '../middleware/authentication.js';
 import { requireHouseholdMember, requireAdmin } from '../middleware/authorization.js';
 import { AuthenticatedRequest } from '../types/index.js';
 import prisma from '../lib/prisma.js';

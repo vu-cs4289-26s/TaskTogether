@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import multer from 'multer';
 import sharp from 'sharp';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate } from '../middleware/authentication.js';
 import { AuthenticatedRequest } from '../types/index.js';
 import { uploadToS3 } from '../lib/s3.js';
 

@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import crypto from 'crypto';
 import { Prisma, HouseholdInvite } from '@prisma/client';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate } from '../middleware/authentication.js';
 import {
   requireHouseholdMember,
   requireAdmin,

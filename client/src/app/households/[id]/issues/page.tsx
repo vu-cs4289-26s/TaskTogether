@@ -19,7 +19,7 @@ import IssueCard from '@/components/issues/IssueCard';
 import IssueModalHeader from '@/components/issues/IssueHeaderModal';
 import { humanizeEnum, statusBadgeClasses } from '@/lib/issues-display';
 import { issueToForm, toUpdateIssueInput } from '@/lib/issues-form';
-import useDeleteFlow from '@/hook/useDeleteFlow';
+import useDeleteFlow from '@/hooks/useDeleteFlow';
 import { createIssueCommentApi } from '@/lib/issues.api';
 import { uploadImageApi } from '@/lib/upload.api';
 
