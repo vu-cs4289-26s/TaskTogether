@@ -346,7 +346,7 @@ export default function AuthModal({
 
 function getPasswordStrength(password: string) {
   if (!password) return { width: '0%', className: '' };
-  if (password.length < 6) return { width: '33%', className: 'bg-urgent' };
-  if (password.length < 10) return { width: '66%', className: 'bg-terracotta' };
+  if (password.length < 4) return { width: '33%', className: 'bg-urgent' };
+  if (password.length < 8) return { width: '66%', className: 'bg-terracotta' };
   return { width: '100%', className: 'bg-sage' };
 }
