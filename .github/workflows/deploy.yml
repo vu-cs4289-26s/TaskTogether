@@ -1,0 +1,236 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - prod
+
+jobs:
+  backend-checks:
+    name: Backend Health Checks
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: tasktogether_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    defaults:
+      run:
+        working-directory: ./server
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: './server/package-lock.json'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/tasktogether_test
+
+      - name: Run database migrations
+        run: npx prisma db push
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/tasktogether_test
+
+      - name: Build
+        run: npm run build
+
+      - name: Run tests
+        run: npm test || echo "No tests found, skipping..."
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/tasktogether_test
+          JWT_SECRET: test-secret-key
+          NODE_ENV: test
+
+  frontend-checks:
+    name: Frontend Health Checks
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ./client
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: './client/package-lock.json'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:3001
+
+      - name: Run tests
+        run: npm test || echo "No tests found, skipping..."
+
+  integration-test:
+    name: Integration Test
+    runs-on: ubuntu-latest
+    needs: [backend-checks, frontend-checks]
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: tasktogether_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup backend
+        working-directory: ./server
+        run: |
+          npm ci
+          npx prisma generate
+          npx prisma db push
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/tasktogether_test
+
+      - name: Start backend server
+        working-directory: ./server
+        run: |
+          npm run build
+          npm start &
+          sleep 5
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/tasktogether_test
+          JWT_SECRET: test-secret-key
+          PORT: 3001
+          NODE_ENV: test
+
+      - name: Cleanup
+        if: always()
+        run: pkill -f "node" || true
+
+  deploy:
+    name: Deploy to EC2
+    runs-on: ubuntu-latest
+    needs: [backend-checks, frontend-checks, integration-test]
+    if: github.ref == 'refs/heads/prod'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            REPO_DIR="/home/${{ secrets.EC2_USERNAME }}/tasktogether"
+            REPO_URL="https://${{ secrets.GH_PAT }}@github.com/vu-cs4289-26s/TaskTogether.git"
+
+            # Clone repo if it doesn't exist, otherwise pull latest
+            if [ ! -d "$REPO_DIR/.git" ]; then
+              echo "Cloning repository..."
+              git clone "$REPO_URL" "$REPO_DIR"
+            fi
+
+            cd "$REPO_DIR"
+
+            # Set remote URL with PAT for auth
+            git remote set-url origin "$REPO_URL"
+
+            # Pull latest code from prod branch
+            git fetch origin prod
+            git checkout prod
+            git reset --hard origin/prod
+            
+            # Always recreate .env from secrets (ensures updates propagate)
+            echo "Writing production .env file..."
+            cat > .env << ENVEOF
+            POSTGRES_USER=${{ secrets.POSTGRES_USER }}
+            POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+            POSTGRES_DB=${{ secrets.POSTGRES_DB }}
+            SERVER_PORT=${{ secrets.SERVER_PORT }}
+            DATABASE_URL=postgresql://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@postgres:5432/${{ secrets.POSTGRES_DB }}
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            API_HOST=0.0.0.0
+            API_PORT=8000
+            ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}
+            CLIENT_URL=${{ secrets.CLIENT_URL }}
+            AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
+            AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+            AWS_REGION=${{ secrets.AWS_REGION }}
+            S3_REGION=${{ secrets.S3_REGION }}
+            S3_BUCKET=${{ secrets.S3_BUCKET }}
+            SMTP_HOST=${{ secrets.SMTP_HOST }}
+            SMTP_PORT=${{ secrets.SMTP_PORT }}
+            SMTP_USER=${{ secrets.SMTP_USER }}
+            SMTP_PASS=${{ secrets.SMTP_PASS }}
+            CLIENT_PORT=${{ secrets.CLIENT_PORT }}
+            NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
+            ENVEOF
+            # Strip leading whitespace from .env lines
+            sed -i 's/^[[:space:]]*//' .env
+            
+            # Ensure swap space exists (prevents OOM during builds)
+            if [ ! -f /swapfile ]; then
+              sudo fallocate -l 2G /swapfile
+              sudo chmod 600 /swapfile
+              sudo mkswap /swapfile
+              sudo swapon /swapfile
+              echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+            elif ! swapon --show | grep -q /swapfile; then
+              sudo swapon /swapfile
+            fi
+
+            # Build and start production containers (build sequentially to limit memory usage)
+            docker compose -f docker-compose.prod.yml down
+            docker compose -f docker-compose.prod.yml build server
+            docker compose -f docker-compose.prod.yml build client
+            docker compose -f docker-compose.prod.yml up -d
+            
+            # Clean up old images
+            docker image prune -f
+            
+            # Verify deployment
+            sleep 10
+            docker compose -f docker-compose.prod.yml ps

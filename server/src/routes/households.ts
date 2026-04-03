@@ -1,21 +1,23 @@
 import { Router, Response } from 'express';
 import crypto from 'crypto';
 import { Prisma, HouseholdInvite } from '@prisma/client';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate } from '../middleware/authentication.js';
 import {
   requireHouseholdMember,
   requireAdmin,
 } from '../middleware/authorization.js';
 import { AuthenticatedRequest } from '../types/index.js';
 import prisma from '../lib/prisma.js';
+import { sendEmail } from '../utils/sendEmail.js';
+import { sendError, sendSuccess, sendPaginated } from '../utils/responses.js';
+import { userSelect } from '../utils/selects.js';
+import { parsePagination } from '../utils/pagination.js';
 
 const router = Router();
 
 // All household routes require authentication
 router.use(authenticate);
 
-// Reusable select for user fields (never leak password)
-const userSelect = { id: true, name: true, email: true, avatar: true } as const;
 
 // Reusable include for household with members
 const householdWithMembers = {
@@ -37,10 +39,7 @@ router.get(
   '/',
   async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
-      const page = Math.max(1, parseInt(req.query.page as string) || 1);
-      const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string) || 20));
-      const skip = (page - 1) * limit;
-
+      const {page, limit, skip} = parsePagination(req.query);
       const [memberships, total] = await Promise.all([
         prisma.householdMember.findMany({
           where: { userId: req.userId },
@@ -61,22 +60,9 @@ router.get(
         myRole: m.role,
       }));
 
-      res.json({
-        status: 'success',
-        data: households,
-        meta: {
-          page,
-          limit,
-          total,
-          totalPages: Math.ceil(total / limit),
-        },
-      });
+      sendPaginated(res, households, { page, limit, total });
     } catch (err) {
-      console.error('GET /api/households error:', err);
-      res.status(500).json({
-        status: 'error',
-        error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch households' },
-      });
+      sendError(res, 500, 'INTERNAL_ERROR', 'Failed to fetch households');
     }
   }
 );
@@ -95,26 +81,16 @@ router.get(
       });
 
       if (!household) {
-        res.status(404).json({
-          status: 'error',
-          error: { code: 'HOUSEHOLD_NOT_FOUND', message: 'Household not found' },
-        });
+        sendError(res, 404, 'HOUSEHOLD_NOT_FOUND', 'Household not found');
         return;
       }
 
-      res.json({
-        status: 'success',
-        data: {
-          ...household,
-          myRole: req.userRole,
-        },
+      sendSuccess(res, {
+        ...household,
+        myRole: req.userRole,
       });
     } catch (err) {
-      console.error('GET /api/households/:id error:', err);
-      res.status(500).json({
-        status: 'error',
-        error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch household' },
-      });
+      sendError(res, 500, 'INTERNAL_ERROR', 'Failed to fetch household');
     }
   }
 );
@@ -130,21 +106,12 @@ router.post(
       const { name } = req.body;
 
       if (!name || typeof name !== 'string' || name.trim().length === 0) {
-        res.status(400).json({
-          status: 'error',
-          error: { code: 'VALIDATION_ERROR', message: 'Household name is required' },
-        });
+        sendError(res, 400, 'VALIDATION_ERROR', 'Household name is required');
         return;
       }
 
       if (name.trim().length > MAX_NAME_LENGTH) {
-        res.status(400).json({
-          status: 'error',
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: `Household name must be ${MAX_NAME_LENGTH} characters or fewer`,
-          },
-        });
+        sendError(res, 400, 'VALIDATION_ERROR', `Household name must be ${MAX_NAME_LENGTH} characters or fewer`);
         return;
       }
 
@@ -170,16 +137,9 @@ router.post(
         });
       });
 
-      res.status(201).json({
-        status: 'success',
-        data: household,
-      });
+      sendSuccess(res, household, 201);
     } catch (err) {
-      console.error('POST /api/households error:', err);
-      res.status(500).json({
-        status: 'error',
-        error: { code: 'INTERNAL_ERROR', message: 'Failed to create household' },
-      });
+      sendError(res, 500, 'INTERNAL_ERROR', 'Failed to create household');
     }
   }
 );
@@ -196,21 +156,12 @@ router.put(
       const { name } = req.body;
 
       if (!name || typeof name !== 'string' || name.trim().length === 0) {
-        res.status(400).json({
-          status: 'error',
-          error: { code: 'VALIDATION_ERROR', message: 'Household name is required' },
-        });
+        sendError(res, 400, 'VALIDATION_ERROR', 'Household name is required');
         return;
       }
 
       if (name.trim().length > MAX_NAME_LENGTH) {
-        res.status(400).json({
-          status: 'error',
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: `Household name must be ${MAX_NAME_LENGTH} characters or fewer`,
-          },
-        });
+        sendError(res, 400, 'VALIDATION_ERROR', `Household name must be ${MAX_NAME_LENGTH} characters or fewer`);
         return;
       }
 
@@ -220,16 +171,9 @@ router.put(
         include: householdWithMembers,
       });
 
-      res.json({
-        status: 'success',
-        data: updated,
-      });
+      sendSuccess(res, updated);
     } catch (err) {
-      console.error('PUT /api/households/:id error:', err);
-      res.status(500).json({
-        status: 'error',
-        error: { code: 'INTERNAL_ERROR', message: 'Failed to update household' },
-      });
+      sendError(res, 500, 'INTERNAL_ERROR', 'Failed to update household');
     }
   }
 );
@@ -274,21 +218,10 @@ router.delete(
         res.status(204).send();
       } else {
         // Waiting on remaining admins
-        res.status(202).json({
-          status: 'success',
-          data: {
-            message: 'Your vote to delete this household has been recorded',
-            votesReceived: voteCount,
-            votesRequired: adminCount,
-          },
-        });
+        sendSuccess(res, {message: 'Your vote to delete this household has been recorded', votesReceived: voteCount, votesRequired: adminCount}, 202);
       }
     } catch (err) {
-      console.error('DELETE /api/households/:id error:', err);
-      res.status(500).json({
-        status: 'error',
-        error: { code: 'INTERNAL_ERROR', message: 'Failed to process delete vote' },
-      });
+      sendError(res, 500, 'INTERNAL_ERROR', 'Failed to process delete vote');
     }
   }
 );
@@ -312,21 +245,9 @@ router.get(
         }),
       ]);
 
-      res.json({
-        status: 'success',
-        data: {
-          votesReceived: votes.length,
-          votesRequired: adminCount,
-          myVote: votes.some((v) => v.voterId === req.userId),
-          votes,
-        },
-      });
+      sendSuccess(res, { votesReceived: votes.length, votesRequired: adminCount, myVote: votes.some((v) => v.voterId === req.userId), votes });
     } catch (err) {
-      console.error('GET /api/households/:id/delete-vote error:', err);
-      res.status(500).json({
-        status: 'error',
-        error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch delete vote status' },
-      });
+      sendError(res, 500, 'INTERNAL_ERROR', 'Failed to fetch delete vote status');
     }
   }
 );
@@ -345,11 +266,7 @@ router.delete(
       });
       res.status(204).send();
     } catch (err) {
-      console.error('DELETE /api/households/:id/delete-vote error:', err);
-      res.status(500).json({
-        status: 'error',
-        error: { code: 'INTERNAL_ERROR', message: 'Failed to retract delete vote' },
-      });
+      sendError(res, 500, 'INTERNAL_ERROR', 'Failed to retract delete vote');
     }
   }
 );
@@ -375,16 +292,9 @@ router.get(
         joinedAt: m.createdAt,
       }));
 
-      res.json({
-        status: 'success',
-        data,
-      });
+      sendSuccess(res, data);
     } catch (err) {
-      console.error('GET /api/households/:id/members error:', err);
-      res.status(500).json({
-        status: 'error',
-        error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch members' },
-      });
+      sendError(res, 500, 'INTERNAL_ERROR', 'Failed to fetch members');
     }
   }
 );
@@ -404,22 +314,13 @@ router.put(
 
       // Only promotion to ADMIN is allowed
       if (role !== 'ADMIN') {
-        res.status(400).json({
-          status: 'error',
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: 'Role changes are only allowed for promotion to ADMIN. Demotion is not permitted.',
-          },
-        });
+        sendError(res, 400, 'VALIDATION_ERROR', 'Role changes are only allowed for promotion to ADMIN. Demotion is not permitted.');
         return;
       }
 
       // Cannot change your own role
       if (targetUserId === req.userId) {
-        res.status(400).json({
-          status: 'error',
-          error: { code: 'VALIDATION_ERROR', message: 'You cannot change your own role' },
-        });
+        sendError(res, 400, 'VALIDATION_ERROR', 'You cannot change your own role');
         return;
       }
 
@@ -433,19 +334,13 @@ router.put(
       });
 
       if (!membership) {
-        res.status(404).json({
-          status: 'error',
-          error: { code: 'USER_NOT_FOUND', message: 'User is not a member of this household' },
-        });
+        sendError(res, 404, 'USER_NOT_FOUND', 'User is not a member of this household');
         return;
       }
 
       // Already an admin — idempotent response
       if (membership.role === 'ADMIN') {
-        res.json({
-          status: 'success',
-          data: { message: 'User is already an ADMIN' },
-        });
+        sendSuccess(res, { message: 'User is already an ADMIN' });
         return;
       }
 
@@ -457,20 +352,9 @@ router.put(
         },
       });
 
-      res.json({
-        status: 'success',
-        data: {
-          ...updated.user,
-          role: updated.role,
-          joinedAt: updated.createdAt,
-        },
-      });
+      sendSuccess(res, { ...updated.user, role: updated.role, joinedAt: updated.createdAt });
     } catch (err) {
-      console.error('PUT /api/households/:id/members/:userId/role error:', err);
-      res.status(500).json({
-        status: 'error',
-        error: { code: 'INTERNAL_ERROR', message: 'Failed to update member role' },
-      });
+      sendError(res, 500, 'INTERNAL_ERROR', 'Failed to update member role');
     }
   }
 );
@@ -501,32 +385,20 @@ router.delete(
       });
 
       if (!targetMembership) {
-        res.status(404).json({
-          status: 'error',
-          error: { code: 'USER_NOT_FOUND', message: 'User is not a member of this household' },
-        });
+        sendError(res, 404, 'USER_NOT_FOUND', 'User is not a member of this household');
         return;
       }
 
       if (!isSelf) {
         // Trying to remove someone else — must be an admin
         if (!requesterIsAdmin) {
-          res.status(403).json({
-            status: 'error',
-            error: { code: 'ADMIN_REQUIRED', message: 'Only admins can remove other members' },
-          });
+          sendError(res, 403, 'ADMIN_REQUIRED', 'Only admins can remove other members');
           return;
         }
 
         // Admins cannot forcibly remove other admins
         if (targetMembership.role === 'ADMIN') {
-          res.status(403).json({
-            status: 'error',
-            error: {
-              code: 'CANNOT_REMOVE_ADMIN',
-              message: 'Admins cannot be removed by other admins. They must leave voluntarily.',
-            },
-          });
+          sendError(res, 403, 'CANNOT_REMOVE_ADMIN', 'Admins cannot be removed by other admins. They must leave voluntarily.');
           return;
         }
         // Admin removing a MEMBER — allowed, fall through
@@ -539,13 +411,7 @@ router.delete(
           });
 
           if (otherAdminCount === 0) {
-            res.status(400).json({
-              status: 'error',
-              error: {
-                code: 'LAST_ADMIN_CANNOT_LEAVE',
-                message: 'You are the last admin. Promote another member to admin before leaving.',
-              },
-            });
+            sendError(res, 400, 'LAST_ADMIN_CANNOT_LEAVE', 'You are the last admin. Promote another member to admin before leaving.');
             return;
           }
         }
@@ -555,11 +421,7 @@ router.delete(
       await prisma.householdMember.delete({ where: { id: targetMembership.id } });
       res.status(204).send();
     } catch (err) {
-      console.error('DELETE /api/households/:id/members/:userId error:', err);
-      res.status(500).json({
-        status: 'error',
-        error: { code: 'INTERNAL_ERROR', message: 'Failed to remove member' },
-      });
+      sendError(res, 500, 'INTERNAL_ERROR', 'Failed to remove member');
     }
   }
 );
@@ -613,20 +475,9 @@ router.post(
       };
 
       const invite = await createInviteWithRetry();
-
-      res.status(201).json({
-        status: 'success',
-        data: {
-          code: invite.code,
-          expiresAt: invite.expiresAt.toISOString(),
-        },
-      });
+      sendSuccess(res, { code: invite.code, expiresAt: invite.expiresAt.toISOString() }, 201);
     } catch (err) {
-      console.error('POST /api/households/:id/invites error:', err);
-      res.status(500).json({
-        status: 'error',
-        error: { code: 'INTERNAL_ERROR', message: 'Failed to create invite' },
-      });
+      sendError(res, 500, 'INTERNAL_ERROR', 'Failed to create invite');
     }
   }
 );
@@ -648,18 +499,9 @@ router.get(
         orderBy: { createdAt: 'desc' },
       });
 
-      res.json({
-        status: 'success',
-        data: invite
-          ? { code: invite.code, expiresAt: invite.expiresAt.toISOString() }
-          : null,
-      });
+      sendSuccess(res, invite ? { code: invite.code, expiresAt: invite.expiresAt.toISOString() } : null);
     } catch (err) {
-      console.error('GET /api/households/:id/invites/active error:', err);
-      res.status(500).json({
-        status: 'error',
-        error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch active invite' },
-      });
+      sendError(res, 500, 'INTERNAL_ERROR', 'Failed to fetch active invite');
     }
   }
 );
@@ -682,20 +524,140 @@ router.delete(
       });
 
       if (result.count === 0) {
-        res.status(404).json({
-          status: 'error',
-          error: { code: 'NO_ACTIVE_INVITE', message: 'No active invite code to expire' },
-        });
+        sendError(res, 404, 'NO_ACTIVE_INVITE', 'No active invite code to expire');
         return;
       }
 
-      res.json({ status: 'success', data: null });
+      sendSuccess(res, null);
     } catch (err) {
-      console.error('DELETE /api/households/:id/invites/active error:', err);
-      res.status(500).json({
-        status: 'error',
-        error: { code: 'INTERNAL_ERROR', message: 'Failed to expire invite' },
+      sendError(res, 500, 'INTERNAL_ERROR', 'Failed to expire invite');
+    }
+  }
+);
+
+// ============================================
+// POST /api/households/:id/invites/email — Send email invite (admin only)
+// ============================================
+router.post(
+  '/:id/invites/email',
+  requireHouseholdMember,
+  requireAdmin,
+  async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const { email } = req.body;
+
+      // Validate email
+      if (!email || typeof email !== 'string' || !email.includes('@')) {
+        sendError(res, 400, 'VALIDATION_ERROR', 'Valid email is required');
+        return;
+      }
+
+      // Get household info
+      const household = await prisma.household.findUnique({
+        where: { id: req.householdId! },
+        select: { name: true },
       });
+
+      if (!household) {
+        sendError(res, 404, 'HOUSEHOLD_NOT_FOUND', 'Household not found');
+        return;
+      }
+
+      // Check if email is already a member
+      const existingUser = await prisma.user.findUnique({
+        where: { email: email.toLowerCase() },
+        select: { id: true },
+      });
+
+      if (existingUser) {
+        const existingMembership = await prisma.householdMember.findUnique({
+          where: {
+            userId_householdId: {
+              userId: existingUser.id,
+              householdId: req.householdId!,
+            },
+          },
+        });
+
+        if (existingMembership) {
+          sendError(res, 409, 'ALREADY_MEMBER', 'This user is already a member of this household');
+          return;
+        }
+      }
+
+      // Check for existing active invite
+      let invite = await prisma.householdInvite.findFirst({
+        where: {
+          householdId: req.householdId!,
+          expiresAt: { gt: new Date() },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      // Create new invite if none exists
+      if (!invite) {
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        const createInviteWithRetry = async (): Promise<HouseholdInvite> => {
+          const MAX_ATTEMPTS = 5;
+          for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            const code = crypto.randomBytes(4).toString('hex').toUpperCase();
+            try {
+              return await prisma.householdInvite.create({
+                data: {
+                  code,
+                  expiresAt,
+                  householdId: req.householdId!,
+                },
+              });
+            } catch (err) {
+              const isUniqueViolation =
+                err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';
+              if (!isUniqueViolation || attempt === MAX_ATTEMPTS) {
+                throw err;
+              }
+            }
+          }
+          throw new Error('Failed to create invite after retries');
+        };
+        invite = await createInviteWithRetry();
+      }
+
+      const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+      const inviteUrl = `${clientUrl}/invite/${invite.code}`;
+
+      // Send email
+      await sendEmail({
+        to: email.toLowerCase(),
+        subject: `You've been invited to join ${household.name} on TaskTogether`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <h2 style="color: #2d6a4f;">You're Invited to Join ${household.name}!</h2>
+            <p>Hello,</p>
+            <p>You've been invited to join the household <strong>${household.name}</strong> on TaskTogether.</p>
+            <p>Click the button below to accept the invitation and join:</p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${inviteUrl}" 
+                 style="background-color: #2d6a4f; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; display: inline-block;">
+                Accept Invitation
+              </a>
+            </div>
+            <p>Or copy and paste this link into your browser:</p>
+            <p style="word-break: break-all; color: #666;">${inviteUrl}</p>
+            <p style="color: #666; font-size: 14px; margin-top: 30px;">
+              <strong>Note:</strong> This invitation link expires in 7 days.
+            </p>
+            <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
+            <p style="color: #999; font-size: 12px;">
+              If you didn't expect this invitation, you can safely ignore this email.
+            </p>
+          </div>
+        `,
+        text: `You've been invited to join ${household.name} on TaskTogether.\n\nVisit this link to accept: ${inviteUrl}\n\nThis invitation expires in 7 days.`,
+      });
+
+      sendSuccess(res, { email: email.toLowerCase(), sent: true });
+    } catch (err) {
+      sendError(res, 500, 'INTERNAL_ERROR', 'Failed to send invite email');
     }
   }
 );
@@ -714,18 +676,12 @@ router.post(
       });
 
       if (!invite) {
-        res.status(404).json({
-          status: 'error',
-          error: { code: 'INVITE_NOT_FOUND', message: 'Invalid invite code' },
-        });
+        sendError(res, 404, 'INVITE_NOT_FOUND', 'Invalid invite code');
         return;
       }
 
       if (new Date() > invite.expiresAt) {
-        res.status(410).json({
-          status: 'error',
-          error: { code: 'INVITE_EXPIRED', message: 'This invite code has expired' },
-        });
+        sendError(res, 410, 'INVITE_EXPIRED', 'This invite code has expired');
         return;
       }
 
@@ -740,13 +696,7 @@ router.post(
       });
 
       if (existingMembership) {
-        res.status(409).json({
-          status: 'error',
-          error: {
-            code: 'HOUSEHOLD_ALREADY_MEMBER',
-            message: 'You are already a member of this household.',
-          },
-        });
+        sendError(res, 409, 'HOUSEHOLD_ALREADY_MEMBER', 'You are already a member of this household.');
         return;
       }
 
@@ -766,16 +716,9 @@ router.post(
         });
       });
 
-      res.json({
-        status: 'success',
-        data: household,
-      });
+      sendSuccess(res, household);
     } catch (err) {
-      console.error('POST /api/households/join/:code error:', err);
-      res.status(500).json({
-        status: 'error',
-        error: { code: 'INTERNAL_ERROR', message: 'Failed to join household' },
-      });
+      sendError(res, 500, 'INTERNAL_ERROR', 'Failed to join household');
     }
   }
 );

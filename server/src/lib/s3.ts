@@ -5,7 +5,7 @@ import path from 'path';
 const s3 = new AWS.S3({
   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
   secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  region: process.env.AWS_REGION || 'us-east-1',
+  region: process.env.S3_REGION,
 });
 
 const BUCKET = process.env.S3_BUCKET || 'tasktogether-images-dev';
@@ -30,7 +30,7 @@ export async function uploadToS3(
     })
     .promise();
 
-  return `https://${BUCKET}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${key}`;
+  return `https://${BUCKET}.s3.${process.env.S3_REGION || 'us-east-1'}.amazonaws.com/${key}`;
 }
 
 export default s3;

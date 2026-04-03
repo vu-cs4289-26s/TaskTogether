@@ -23,6 +23,13 @@ api.interceptors.response.use(
         localStorage.removeItem('token');
       }
     }
+
+    // Surface the server's detailed error message when available
+    const serverMessage = error.response?.data?.error?.message;
+    if (serverMessage) {
+      return Promise.reject(new Error(serverMessage));
+    }
+
     return Promise.reject(error);
   }
 );

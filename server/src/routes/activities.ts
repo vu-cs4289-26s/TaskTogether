@@ -1,9 +1,10 @@
 import { Router, Response } from 'express';
 import { ActivityStatus, ActivityType, Prisma } from '@prisma/client';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate } from '../middleware/authentication.js';
 import { requireHouseholdMember, requireAdmin } from '../middleware/authorization.js';
 import { AuthenticatedRequest } from '../types/index.js';
 import prisma from '../lib/prisma.js';
+import { broadcastNotification } from '../lib/notifications.js';
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
@@ -175,6 +176,17 @@ router.post(
         },
         include: activityInclude,
       });
+
+      broadcastNotification({
+        householdId: req.householdId!,
+        type: 'EVENT_UPCOMING',
+        message: `New event "${activity.title}" was added to the shared calendar`,
+        payload: {
+          activityId: activity.id,
+          activityTitle: activity.title,
+          scheduledAt: activity.scheduledAt.toISOString(),
+        },
+      }).catch(console.error);
 
       res.status(201).json({
         status: 'success',
