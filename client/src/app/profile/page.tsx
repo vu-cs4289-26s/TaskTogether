@@ -19,6 +19,7 @@ import { listTasksApi, completeTaskApi, updateTaskApi, deleteTaskApi } from '@/l
 import type { Household } from '@/types/households';
 import type { Task, UpdateTaskInput } from '@/types/tasks';
 import { getAvatarColor } from '@/types/households';
+import { buildScheduledAt } from '@/lib/calendarDateTime';
 import { isTaskCompleted } from '@/lib/task-helpers';
 import { loadProfileActivities, saveProfileActivities } from '@/lib/profileActivities';
 import TaskListPanel from '@/components/tasks/TaskListPanel';
@@ -35,11 +36,6 @@ function dateKeyLocal(d: Date) {
 function monthLabel(year: number, month: number) {
   return new Date(year, month, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 }
-function buildScheduledAt(input: EventDetailInput) {
-  if (input.allDay) return `${input.date}T00:00:00`;
-  return `${input.date}T${input.startTime || '00:00'}:00`;
-}
-
 // ---- tag helpers (same idea as household) ----
 function extractTag(desc: string | null | undefined, key: string): string | null {
   if (!desc) return null;

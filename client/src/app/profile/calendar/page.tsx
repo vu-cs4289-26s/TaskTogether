@@ -16,6 +16,7 @@ import type { Activity, CreateActivityInput } from '@/types/activities';
 import BaseModal from '@/components/modals/BaseModal';
 import Button from '@/components/ui/Button';
 import { Plus } from 'lucide-react';
+import { buildScheduledAt } from '@/lib/calendarDateTime';
 import { loadProfileActivities, saveProfileActivities } from '@/lib/profileActivities';
 
 function pad2(n: number) {
@@ -27,11 +28,6 @@ function dateKeyLocal(d: Date) {
 function monthLabel(year: number, month: number) {
   return new Date(year, month, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 }
-function buildScheduledAt(input: EventDetailInput) {
-  if (input.allDay) return `${input.date}T00:00:00`;
-  return `${input.date}T${input.startTime || '00:00'}:00`;
-}
-
 function extractTag(desc: string | null | undefined, key: string): string | null {
   if (!desc) return null;
   const re = new RegExp(`\\[\\[${key}:([^\\]]+)\\]\\]`, 'i');
