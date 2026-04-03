@@ -12,11 +12,9 @@ import ActivityCard from '@/components/calendar/ActivityCard';
 import CreateEventModal, { type EventDetailInput } from '@/components/modals/CreateEventModal';
 import BaseModal from '@/components/modals/BaseModal';
 import Button from '@/components/ui/Button';
-import EventDeleteModal from '@/components/calendar/EventDeleteModal';
 import { Plus } from 'lucide-react';
 
 import { useAuth } from '@/contexts/AuthContext';
-import useDeleteFlow from '@/hooks/useDeleteFlow';
 import { getHousehold } from '@/lib/households';
 import {
   listActivitiesApi,
@@ -24,6 +22,7 @@ import {
   updateActivityApi,
   deleteActivityApi,
 } from '@/lib/activities.api';
+import { buildScheduledAt } from '@/lib/calendarDateTime';
 import type { Household } from '@/types/households';
 import type { Activity, ActivityType, CreateActivityInput } from '@/types/activities';
 
@@ -41,11 +40,6 @@ function mapHouseholdEventTypeToActivityType(t: EventDetailInput['type']): Activ
   if (t === 'maintenance') return 'CHORE';
   if (t === 'social') return 'BONDING';
   return 'OTHER';
-}
-
-function buildScheduledAt(input: EventDetailInput) {
-  if (input.allDay) return `${input.date}T00:00:00`;
-  return `${input.date}T${input.startTime || '00:00'}:00`;
 }
 
 function extractTag(desc: string | null | undefined, key: string): string | null {
@@ -143,16 +137,6 @@ export default function HouseholdCalendarPage() {
   const [isUpdatingEvent, setIsUpdatingEvent] = useState(false);
   const [updateEventError, setUpdateEventError] = useState<string | null>(null);
   const isAdmin = household?.myRole === 'ADMIN';
-
-  const {
-    isDeleteOpen,
-    deleteTarget: deleteActivity,
-    isDeleting: isDeletingEvent,
-    setIsDeleting: setIsDeletingEvent,
-    openDelete: openDeleteEvent,
-    closeDelete: closeDeleteEvent,
-    forceCloseDelete: forceCloseDeleteEvent,
-  } = useDeleteFlow<Activity>();
 
   useEffect(() => {
     if (!id) return;
@@ -325,24 +309,26 @@ export default function HouseholdCalendarPage() {
     }
   }
 
-  function handleDeleteEvent() {
-    if (!editingActivity) return;
-    setIsEditEventOpen(false);
-    openDeleteEvent(editingActivity);
-  }
+  async function handleDeleteEvent() {
+    if (!id || !editingActivity) return;
 
-  async function confirmDeleteEvent(activityId: string) {
-    if (!id) return;
     try {
-      setIsDeletingEvent(true);
-      await deleteActivityApi(id, activityId);
-      setActivities((prev) => prev.filter((a) => a.id !== activityId));
-      forceCloseDeleteEvent();
+      setIsUpdatingEvent(true);
+      setUpdateEventError(null);
+      const deletingId = editingActivity.id;
+      setActivities((prev) => prev.filter((a) => a.id !== deletingId));
+      try {
+        await deleteActivityApi(id, deletingId);
+      } catch {
+        // keep optimistic
+      }
+      setIsEditEventOpen(false);
+      setEditingActivity(null);
       closeActivityDetails();
-    } catch (err) {
-      setUpdateEventError(err instanceof Error ? err.message : 'Failed to delete event');
+    } catch {
+      setUpdateEventError('Failed to delete event.');
     } finally {
-      setIsDeletingEvent(false);
+      setIsUpdatingEvent(false);
     }
   }
 
@@ -514,14 +500,6 @@ export default function HouseholdCalendarPage() {
         onDelete={isAdmin ? handleDeleteEvent : undefined}
       />
 
-      <EventDeleteModal
-        open={isDeleteOpen}
-        activity={deleteActivity}
-        isDeleting={isDeletingEvent}
-        onClose={closeDeleteEvent}
-        onConfirm={confirmDeleteEvent}
-      />
-
       <BaseModal
         open={openEventDetails}
         ariaLabel="Event details"
@@ -550,9 +528,20 @@ export default function HouseholdCalendarPage() {
               <Button
                 type="button"
                 variant="danger"
-                onClick={() => {
-                  if (!activeActivity) return;
-                  openDeleteEvent(activeActivity);
+                onClick={async () => {
+                  if (!id || !activeActivity) return;
+                  setIsUpdatingEvent(true);
+                  setUpdateEventError(null);
+                  const deletingId = activeActivity.id;
+                  setActivities((prev) => prev.filter((a) => a.id !== deletingId));
+                  try {
+                    await deleteActivityApi(id, deletingId);
+                  } catch {
+                    // keep optimistic
+                  } finally {
+                    setIsUpdatingEvent(false);
+                    closeActivityDetails();
+                  }
                 }}
                 disabled={!activeActivity || isUpdatingEvent}
               >

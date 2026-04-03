@@ -41,6 +41,7 @@ import {
   updateActivityApi,
   deleteActivityApi,
 } from "@/lib/activities.api";
+import { buildScheduledAt } from "@/lib/calendarDateTime";
 import type {
   Activity,
   ActivityType,
@@ -69,11 +70,6 @@ function mapEventTypeToActivityType(t: EventDetailInput["type"]): ActivityType {
   if (t === "social") return "BONDING";
   // meeting/shared-space/other
   return "OTHER";
-}
-
-function buildScheduledAt(input: EventDetailInput) {
-  if (input.allDay) return `${input.date}T00:00:00`;
-  return `${input.date}T${input.startTime || "00:00"}:00`;
 }
 
 function extractTag(
@@ -707,26 +703,6 @@ export default function HouseholdDashboardPage() {
                 <path d="M23 21v-2a4 4 0 0 0-3-3.87m-4-12a4 4 0 0 1 0 7.75" />
               </svg>
               Manage Members
-            </button>
-            <button
-              onClick={() => router.push(`/households/${id}/wiki`)}
-              className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium flex items-center gap-2 transition-all hover:bg-base hover:border-sage"
-              type="button"
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
-                <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
-              </svg>
-              Wiki
             </button>
           </div>
         </div>
