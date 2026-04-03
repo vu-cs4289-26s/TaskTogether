@@ -42,6 +42,7 @@ services:
       SMTP_PORT: ${SMTP_PORT}
       SMTP_USER: ${SMTP_USER}
       SMTP_PASS: ${SMTP_PASS}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
     ports:
       - "${SERVER_PORT:-3001}:${SERVER_PORT:-3001}"
     networks:
@@ -63,10 +64,12 @@ services:
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID}
     container_name: tasktogether_prod_client
     environment:
       NODE_ENV: production
       PORT: ${CLIENT_PORT:-3000}
+      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID}
     ports:
       - "${CLIENT_PORT:-3000}:${CLIENT_PORT:-3000}"
     networks:
