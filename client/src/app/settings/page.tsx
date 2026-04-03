@@ -1,22 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import AppNavbar from '@/components/shared/AppNavbar';
 import Toggle from '@/components/settings/toggle';
 import Button from '@/components/ui/Button';
 import Field, { inputClass } from '@/components/ui/Field';
 import api from '@/lib/api';
-
-function formatDeliveryMessage(
-  message: string,
-  debug?: { code?: string; resetUrl?: string; preview?: string }
-) {
-  if (!debug) return message;
-  if (debug.code) return `${message} Dev code: ${debug.code}`;
-  if (debug.resetUrl) return `${message} Dev reset link: ${debug.resetUrl}`;
-  if (debug.preview) return `${message} ${debug.preview}`;
-  return message;
-}
+import PasswordRequirements from '@/components/auth/PasswordRequirements';
 
 type SectionProps = {
   title: string;
@@ -58,15 +48,6 @@ function SettingItem({ label, hint, right, noDivider }: ItemProps) {
       <div className="shrink-0">{right}</div>
     </div>
   );
-}
-
-function getPasswordStrengthMessage(password: string): string {
-  if (!password) return 'Use at least 8 characters, with uppercase, lowercase, and a number.';
-  if (password.length < 8) return 'Too short';
-  if (!/[A-Z]/.test(password)) return 'Add at least one uppercase letter';
-  if (!/[a-z]/.test(password)) return 'Add at least one lowercase letter';
-  if (!/[0-9]/.test(password)) return 'Add at least one number';
-  return 'Strong password';
 }
 
 function isPasswordStrong(password: string): boolean {
@@ -161,20 +142,12 @@ function TwoFactorModal({
 
   const description =
     mode === 'enable'
-      ? 'Enter the verification code sent to your email to turn on two-factor authentication.'
-      : 'Enter the verification code sent to your email to turn off two-factor authentication.';
+      ? 'Enter the verification code sent to your email to turn on two-factor authentication'
+      : 'Enter the verification code sent to your email to turn off two-factor authentication';
 
   return (
-    <div
-      className="fixed inset-0 z-[100] flex items-start justify-center bg-black/35 px-4 py-10 overflow-y-auto"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget && !loading) onClose();
-      }}
-    >
-      <div
-        className="w-full max-w-[520px] rounded-md border border-divider bg-surface shadow-xl my-auto max-h-[calc(100vh-5rem)] overflow-y-auto"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/35 px-4">
+      <div className="w-full max-w-[520px] rounded-md border border-divider bg-surface shadow-xl">
         <div className="p-6 border-b border-divider">
           <h2 className="text-2xl font-heading font-semibold text-sage">{title}</h2>
           <p className="mt-2 text-sm text-text-secondary">{description}</p>
@@ -198,7 +171,7 @@ function TwoFactorModal({
               label="Verification Code"
               htmlFor="twoFactorCode"
               required
-              hint="Enter the 6-digit code from your email."
+              hint="Enter the 6-digit code from your email"
             >
               <input
                 id="twoFactorCode"
@@ -264,11 +237,6 @@ function ChangePasswordModal({
     }
   }, [isOpen]);
 
-  const strengthMessage = useMemo(
-    () => getPasswordStrengthMessage(newPassword),
-    [newPassword]
-  );
-
   if (!isOpen) return null;
 
   async function handleSendPasswordChangeCode() {
@@ -280,10 +248,7 @@ function ChangePasswordModal({
       const res = await api.post('/auth/2fa/send-password-change-code');
       setPasswordChangeCodeSent(true);
       setSuccess(
-        formatDeliveryMessage(
-          res.data?.data?.message || 'A verification code was sent to your email.',
-          res.data?.data?.debug
-        )
+        res.data?.data?.message || 'A verification code was sent to your email'
       );
     } catch (err: unknown) {
       const errorObj = err as {
@@ -371,22 +336,14 @@ function ChangePasswordModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-[100] flex items-start justify-center bg-black/35 px-4 py-10 overflow-y-auto"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget && !loading) onClose();
-      }}
-    >
-      <div
-        className="w-full max-w-[520px] rounded-md border border-divider bg-surface shadow-xl my-auto max-h-[calc(100vh-5rem)] overflow-y-auto"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/35 px-4">
+      <div className="w-full max-w-[520px] rounded-md border border-divider bg-surface shadow-xl">
         <div className="p-6 border-b border-divider">
           <h2 className="text-2xl font-heading font-semibold text-sage">
             Change Password
           </h2>
           <p className="mt-2 text-sm text-text-secondary">
-            Enter your current password, then choose a new one.
+            Enter your current password, then choose a new one
           </p>
         </div>
 
@@ -420,7 +377,6 @@ function ChangePasswordModal({
               label="New Password"
               htmlFor="newPassword"
               required
-              hint={strengthMessage}
             >
               <input
                 id="newPassword"
@@ -432,6 +388,8 @@ function ChangePasswordModal({
                 disabled={loading}
               />
             </Field>
+
+            <PasswordRequirements password={newPassword} />
 
             <Field
               label="Confirm New Password"
@@ -466,7 +424,7 @@ function ChangePasswordModal({
                       </div>
                       <div className="text-[13px] text-text-secondary mt-1">
                         For security, request and enter the code sent to your email before
-                        updating your password.
+                        updating your password
                       </div>
                     </div>
                     <button
@@ -488,7 +446,7 @@ function ChangePasswordModal({
                   label="2FA Code"
                   htmlFor="twoFactorCode"
                   required
-                  hint="Enter the 6-digit code from your email."
+                  hint="Enter the 6-digit code from your email"
                 >
                   <input
                     id="twoFactorCode"
@@ -600,10 +558,7 @@ useEffect(() => {
 
       setTwoFactorModalOpen(true);
       setTwoFactorSuccess(
-        formatDeliveryMessage(
-          res.data?.data?.message || 'A verification code was sent to your email.',
-          res.data?.data?.debug
-        )
+        res.data?.data?.message || 'A verification code was sent to your email'
       );
     } catch (err: unknown) {
       const errorObj = err as {
@@ -738,7 +693,7 @@ return (
                 <div className="text-xs text-text-secondary mt-1">
                   {passwordDateLoading
                     ? 'Loading password update date...'
-                    : `Last changed on: ${formatPasswordDate(passwordUpdatedAt)}.`}
+                    : `Last changed on: ${formatPasswordDate(passwordUpdatedAt)}`}
                 </div>
               </div>
               <button

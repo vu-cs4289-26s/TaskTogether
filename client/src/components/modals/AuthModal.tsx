@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import BaseModal from '@/components/modals/BaseModal';
 import Button from '@/components/ui/Button';
 import Field, { inputClass } from '@/components/ui/Field';
 import { loadGoogleIdentityScript } from '@/lib/googleIdentity';
+import PasswordRequirements from '@/components/auth/PasswordRequirements';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -124,8 +125,6 @@ export default function AuthModal({
       ? 'Log in to manage your households'
       : 'Start organizing your household today';
 
-  const passwordStrength = useMemo(() => getPasswordStrength(password), [password]);
-
   const submitDisabled = requiresTwoFactor
     ? loading || twoFactorCode.trim().length !== 6
     : loading ||
@@ -240,7 +239,6 @@ export default function AuthModal({
                 label="Password"
                 htmlFor="password"
                 required
-                hint={mode === 'register' ? 'Must be at least 8 characters' : undefined}
               >
                 <input
                   id="password"
@@ -268,12 +266,7 @@ export default function AuthModal({
               )}
 
               {mode === 'register' && (
-                <div className="h-1 rounded bg-divider overflow-hidden mt-1">
-                  <div
-                    className={`h-full transition-all duration-300 ${passwordStrength.className}`}
-                    style={{ width: passwordStrength.width }}
-                  />
-                </div>
+                <PasswordRequirements password={password} className="mt-2" />
               )}
             </div>
 
@@ -342,11 +335,4 @@ export default function AuthModal({
       )}
     </BaseModal>
   );
-}
-
-function getPasswordStrength(password: string) {
-  if (!password) return { width: '0%', className: '' };
-  if (password.length < 4) return { width: '33%', className: 'bg-urgent' };
-  if (password.length < 8) return { width: '66%', className: 'bg-terracotta' };
-  return { width: '100%', className: 'bg-sage' };
 }

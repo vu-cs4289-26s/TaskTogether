@@ -42,7 +42,7 @@ export default function ForgotPasswordModal({
       open={isOpen}
       ariaLabel="Forgot password"
       title="Forgot Password?"
-      subtitle="Enter your email and we’ll send you a reset link."
+      subtitle="Enter your email and we’ll send you a reset link"
       isBlocking={loading}
       onClose={onClose}
       maxWidthClassName="max-w-[450px]"
@@ -85,7 +85,7 @@ export default function ForgotPasswordModal({
           disabled={loading}
           className="text-sage font-medium hover:underline disabled:opacity-60"
         >
-          Back to Log In
+          Back to Sign In
         </button>
       </div>
     </BaseModal>
