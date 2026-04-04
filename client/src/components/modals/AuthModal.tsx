@@ -303,20 +303,24 @@ export default function AuthModal({
 
       {!requiresTwoFactor && (
         <>
-          <div className="flex items-center gap-4 my-6">
-            <div className="flex-1 h-px bg-divider" />
-            <span className="text-text-secondary text-sm">
-              {mode === 'login' ? 'or log in with' : 'or sign up with'}
-            </span>
-            <div className="flex-1 h-px bg-divider" />
-          </div>
+          {googleClientId && (
+            <>
+              <div className="flex items-center gap-4 my-6">
+                <div className="flex-1 h-px bg-divider" />
+                <span className="text-text-secondary text-sm">
+                  {mode === 'login' ? 'or log in with' : 'or sign up with'}
+                </span>
+                <div className="flex-1 h-px bg-divider" />
+              </div>
 
-          <div className="flex flex-col gap-2">
-            <div
-              ref={googleButtonRef}
-              className="min-h-[44px] flex items-center justify-center"
-            />
-          </div>
+              <div className="flex flex-col gap-2">
+                <div
+                  ref={googleButtonRef}
+                  className="min-h-[44px] flex items-center justify-center"
+                />
+              </div>
+            </>
+          )}
 
           <div className="text-center mt-4">
             <span className="text-text-secondary">
