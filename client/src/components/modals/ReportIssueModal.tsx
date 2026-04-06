@@ -206,7 +206,7 @@ export default function ReportIssueModal({
                 <div className="flex flex-col gap-2">
                     <div className="text-sm font-medium text-sage flex items-center gap-2">
                         <span className="inline-block w-1 h-3.5 rounded-sm bg-terracotta" />
-                        Photo <span className="text-text-secondary font-normal">(optional)</span>
+                        Photo 
                     </div>
 
                     <div
