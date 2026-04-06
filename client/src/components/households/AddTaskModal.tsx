@@ -180,7 +180,7 @@ export default function AddTaskModal({
               className="text-sm font-medium text-sage flex items-center gap-2"
             >
               <span className="inline-block w-1 h-3.5 rounded-sm bg-terracotta" />
-              Description (Optional)
+              Description
             </label>
             <textarea
               id="task-description"
