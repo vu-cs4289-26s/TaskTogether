@@ -207,6 +207,8 @@ jobs:
             SMTP_PASS=${{ secrets.SMTP_PASS }}
             CLIENT_PORT=${{ secrets.CLIENT_PORT }}
             NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
+            NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ secrets.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
+            GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
             ENVEOF
             # Strip leading whitespace from .env lines
             sed -i 's/^[[:space:]]*//' .env
