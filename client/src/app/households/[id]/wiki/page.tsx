@@ -7,7 +7,15 @@ import AppNavbar from "@/components/shared/AppNavbar";
 import { getHouseholdApi } from "@/lib/households.api";
 import { listWikiSectionsApi, updateWikiSectionApi } from "@/lib/wiki.api";
 import type { WikiSection } from "@/types/wiki";
-import { Pencil, X, Save, Loader2, ArrowLeft } from "lucide-react";
+import { Pencil, X, Save, Loader2, ArrowLeft, Settings } from "lucide-react";
+import WikiManageModal from "@/components/wiki/WikiManageModal";
+import {
+  createWikiSectionApi,
+  renameWikiSectionApi,
+  deleteWikiSectionApi,
+  reorderWikiSectionsApi,
+} from "@/lib/wiki.api";
+import { useAuth } from "@/contexts/AuthContext";
 
 // Lazy-load the editor so SSR doesn't choke on ProseMirror DOM APIs
 const RichTextEditor = dynamic(
@@ -20,26 +28,17 @@ const RichTextEditor = dynamic(
   },
 );
 
-//TODO: instead of hardcoding these defaults, we should have an interface for managing the sections (add/remove/reorder)
-// and persist that in the backend. For now this is fine since the wiki is pretty new and we want to avoid extra complexity,
-// but eventually we'll want to build that out.
-const DEFAULT_SECTIONS = [
-  { slug: "garbage", title: "Garbage & Recycling" },
-  { slug: "appliances", title: "Appliances" },
-  { slug: "bills", title: "Bills & Subscriptions" },
-  { slug: "weather", title: "Weather & Seasonal" },
-  { slug: "parking", title: "Parking & Storage" },
-  { slug: "rules", title: "Rules & Expectations" },
-  { slug: "misc", title: "Miscellaneous" },
-];
+// Backend now auto-seeds default sections, no need for hardcoded defaults
 
 export default function HouseholdWikiPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const householdId = params?.id;
+  const { user } = useAuth();
 
   const [active, setActive] = useState<string>("garbage");
   const [householdName, setHouseholdName] = useState<string>("");
+  const [isAdmin, setIsAdmin] = useState(false);
 
   // Wiki data
   const [sections, setSections] = useState<WikiSection[]>([]);
@@ -48,11 +47,16 @@ export default function HouseholdWikiPage() {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
 
+  // Manage sections modal state
+  const [isManageModalOpen, setIsManageModalOpen] = useState(false);
+  const [isManaging, setIsManaging] = useState(false);
+  const [manageError, setManageError] = useState<string | null>(null);
+
   const sectionSlugs = useMemo(
     () =>
       sections.length > 0
         ? sections.map((s) => s.slug)
-        : DEFAULT_SECTIONS.map((s) => s.slug),
+        : [],
     [sections],
   );
 
@@ -63,14 +67,19 @@ export default function HouseholdWikiPage() {
     (async () => {
       setSectionsLoading(true);
       try {
-        const [data, household] = await Promise.all([
-          listWikiSectionsApi(householdId),
-          getHouseholdApi(householdId),
-        ]);
-        if (!cancelled) {
-          setSections(data);
-          setHouseholdName(household?.name ?? "");
-        }
+      const [data, household] = await Promise.all([
+        listWikiSectionsApi(householdId),
+        getHouseholdApi(householdId),
+      ]);
+      if (!cancelled) {
+        setSections(data);
+        setHouseholdName(household?.name ?? "");
+        // Check if current user is admin
+        const currentUserMembership = household?.members?.find(
+          (m) => m.userId === user?.id
+        );
+        setIsAdmin(currentUserMembership?.role === 'ADMIN');
+      }
       } catch {
         // gracefully handle
       } finally {
@@ -174,19 +183,8 @@ export default function HouseholdWikiPage() {
       ?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  // Resolve display sections — use API data if available, else defaults
-  const displaySections =
-    sections.length > 0
-      ? sections
-      : DEFAULT_SECTIONS.map((s) => ({
-          id: s.slug,
-          slug: s.slug,
-          title: s.title,
-          content: "",
-          createdAt: "",
-          updatedAt: "",
-          updatedBy: null,
-        }));
+  // Resolve display sections — use API data only (backend auto-seeds)
+  const displaySections = sections;
 
   if (!householdId) {
     return (
@@ -230,38 +228,49 @@ export default function HouseholdWikiPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
-            {editing ? (
-              <>
-                <button
-                  type="button"
-                  onClick={cancelEdit}
-                  className="px-5 py-2.5 rounded-sm border border-divider text-text-secondary font-medium flex items-center gap-2 transition-all hover:bg-soft-highlight"
-                >
-                  <X size={16} />
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={saveAll}
-                  className="px-5 py-2.5 rounded-sm bg-sage text-white font-medium flex items-center gap-2 transition-all hover:bg-sage-hover hover:-translate-y-px"
-                >
-                  <Save size={16} />
-                  Save All
-                </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                onClick={enterEdit}
-                disabled={sectionsLoading}
-                className="px-5 py-2.5 rounded-sm bg-sage text-white font-medium flex items-center gap-2 transition-all hover:bg-sage-hover hover:-translate-y-px disabled:opacity-50"
-              >
-                <Pencil size={16} />
-                Edit Wiki
-              </button>
-            )}
-          </div>
+      <div className="flex items-center gap-3">
+        {editing ? (
+          <>
+            <button
+              type="button"
+              onClick={cancelEdit}
+              className="px-5 py-2.5 rounded-sm border border-divider text-text-secondary font-medium flex items-center gap-2 transition-all hover:bg-soft-highlight"
+            >
+              <X size={16} />
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={saveAll}
+              className="px-5 py-2.5 rounded-sm bg-sage text-white font-medium flex items-center gap-2 transition-all hover:bg-sage-hover hover:-translate-y-px"
+            >
+              <Save size={16} />
+              Save All
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() => setIsManageModalOpen(true)}
+              disabled={sectionsLoading}
+              className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium flex items-center gap-2 transition-all hover:bg-base hover:border-sage disabled:opacity-50"
+            >
+              <Settings size={16} />
+              Manage Sections
+            </button>
+            <button
+              type="button"
+              onClick={enterEdit}
+              disabled={sectionsLoading}
+              className="px-5 py-2.5 rounded-sm bg-sage text-white font-medium flex items-center gap-2 transition-all hover:bg-sage-hover hover:-translate-y-px disabled:opacity-50"
+            >
+              <Pencil size={16} />
+              Edit Wiki
+            </button>
+          </>
+        )}
+      </div>
         </div>
       </div>
 
@@ -364,6 +373,75 @@ export default function HouseholdWikiPage() {
           )}
         </main>
       </div>
+
+      {/* Manage Sections Modal */}
+      <WikiManageModal
+        open={isManageModalOpen}
+        sections={sections}
+        isAdmin={isAdmin}
+        isSubmitting={isManaging}
+        error={manageError}
+        onClose={() => {
+          if (!isManaging) {
+            setIsManageModalOpen(false);
+            setManageError(null);
+          }
+        }}
+        onReorder={async (order) => {
+          if (!householdId) return;
+          try {
+            setIsManaging(true);
+            setManageError(null);
+            const updated = await reorderWikiSectionsApi(householdId, order);
+            setSections(updated);
+          } catch {
+            setManageError('Failed to reorder sections. Please try again.');
+          } finally {
+            setIsManaging(false);
+          }
+        }}
+        onRename={async (slug, data) => {
+          if (!householdId) return;
+          try {
+            setIsManaging(true);
+            setManageError(null);
+            const updated = await renameWikiSectionApi(householdId, slug, data);
+            setSections((prev) =>
+              prev.map((s) => (s.slug === slug ? updated : s))
+            );
+          } catch {
+            setManageError('Failed to rename section. Please try again.');
+          } finally {
+            setIsManaging(false);
+          }
+        }}
+        onDelete={async (slug) => {
+          if (!householdId) return;
+          try {
+            setIsManaging(true);
+            setManageError(null);
+            await deleteWikiSectionApi(householdId, slug);
+            setSections((prev) => prev.filter((s) => s.slug !== slug));
+          } catch {
+            setManageError('Failed to delete section. Please try again.');
+          } finally {
+            setIsManaging(false);
+          }
+        }}
+        onCreate={async (data) => {
+          if (!householdId) return;
+          try {
+            setIsManaging(true);
+            setManageError(null);
+            const created = await createWikiSectionApi(householdId, data);
+            setSections((prev) => [...prev, created]);
+          } catch {
+            setManageError('Failed to create section. Please try again.');
+          } finally {
+            setIsManaging(false);
+          }
+        }}
+      />
     </div>
   );
 }

@@ -331,8 +331,28 @@ export default function AddTaskModal({
         }}
       />
 
-      <div className="flex gap-4 justify-between mt-6">
-        {/* Delete button (edit mode only) */}
+      <div className="flex gap-4 justify-end mt-6">
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={isSubmitting}
+          className="px-6 py-3 rounded-sm border border-divider bg-transparent text-text-primary transition hover:bg-base disabled:opacity-60"
+        >
+          Cancel
+        </button>
+
+        <button
+          type="button"
+          onClick={submit}
+          disabled={isSubmitting || !title.trim()}
+          className="px-6 py-3 rounded-sm bg-sage text-white font-medium flex items-center gap-2 transition-all hover:bg-sage-hover hover:-translate-y-px disabled:opacity-60 disabled:hover:translate-y-0"
+        >
+          {isSubmitting
+            ? isEditMode ? 'Saving...' : 'Creating...'
+            : isEditMode ? 'Save Changes' : 'Create Task'}
+        </button>
+
+        {/* Delete button (edit mode only) - moved to right side */}
         {isEditMode && onDelete && (
           <button
             type="button"
@@ -343,29 +363,7 @@ export default function AddTaskModal({
             Delete
           </button>
         )}
-
-        <div className="flex gap-4 ml-auto">
-              <button
-                type="button"
-                onClick={onClose}
-                disabled={isSubmitting}
-                className="px-6 py-3 rounded-sm border border-divider bg-transparent text-text-primary transition hover:bg-base disabled:opacity-60"
-              >
-                Cancel
-              </button>
-
-              <button
-                type="button"
-                onClick={submit}
-                disabled={isSubmitting || !title.trim()}
-                className="px-6 py-3 rounded-sm bg-sage text-white font-medium flex items-center gap-2 transition-all hover:bg-sage-hover hover:-translate-y-px disabled:opacity-60 disabled:hover:translate-y-0"
-              >
-                {isSubmitting
-                  ? isEditMode ? 'Saving...' : 'Creating...'
-                  : isEditMode ? 'Save Changes' : 'Create Task'}
-              </button>
-            </div>
-          </div>
+      </div>
         </div>
       </div>
     </div>

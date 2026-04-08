@@ -1084,4 +1084,46 @@ router.get(
   },
 );
 
+// PATCH /api/users/me — update profile (name, avatar)
+router.patch(
+  "/me",
+  authenticate,
+  async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const { name, avatar } = req.body ?? {};
+      const data: { name?: string; avatar?: string | null } = {};
+
+      if (name !== undefined) {
+        if (typeof name !== "string" || !name.trim()) {
+          sendError(res, 400, "VALIDATION_ERROR", "Name must be a non-empty string");
+          return;
+        }
+        data.name = name.trim();
+      }
+
+      if (avatar !== undefined) {
+        if (avatar !== null && typeof avatar !== "string") {
+          sendError(res, 400, "VALIDATION_ERROR", "Avatar must be a string URL or null");
+          return;
+        }
+        data.avatar = avatar;
+      }
+
+      if (Object.keys(data).length === 0) {
+        sendError(res, 400, "VALIDATION_ERROR", "No fields to update");
+        return;
+      }
+
+      const updated = await prisma.user.update({
+        where: { id: req.userId },
+        data,
+      });
+
+      sendSuccess(res, sanitizeUser(updated));
+    } catch (err) {
+      sendError(res, 500, "SERVER_ERROR", "Failed to update profile");
+    }
+  },
+);
+
 export default router;
