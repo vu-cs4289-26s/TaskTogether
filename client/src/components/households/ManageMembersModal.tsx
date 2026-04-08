@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import type { HouseholdMember } from '@/types/households';
-import { getInitials, getAvatarColor } from '@/types/households';
+import Avatar from '@/components/ui/Avatar';
 import { createInviteApi, getActiveInviteApi, expireInviteApi, removeMemberApi, promoteMemberApi, sendEmailInviteApi } from '@/lib/households.api';
 
 type Props = {
@@ -212,16 +212,16 @@ export default function ManageMembersModal({
             const isLoading = actionLoading === m.user.id;
 
             return (
-              <div
-                key={m.id}
-                className="flex items-center gap-3 p-3 rounded-sm border border-divider"
-              >
-                <div
-                  className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold text-white flex-shrink-0"
-                  style={{ backgroundColor: getAvatarColor(m.user.id) }}
-                >
-                  {getInitials(m.user.name)}
-                </div>
+            <div
+              key={m.id}
+              className="flex items-center gap-3 p-3 rounded-sm border border-divider"
+            >
+              <Avatar
+                src={m.user.avatar}
+                name={m.user.name}
+                userKey={m.user.id}
+                size="md"
+              />
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">

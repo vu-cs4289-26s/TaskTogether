@@ -13,7 +13,7 @@ import {
   deleteTaskApi,
 } from '@/lib/tasks.api';
 import type { Household, HouseholdMember } from '@/types/households';
-import { getInitials, getAvatarColor } from '@/types/households';
+import Avatar from '@/components/ui/Avatar';
 import type { Task } from '@/types/tasks';
 import { priorityStyles, priorityLabels, formatDueDate, isTaskCompleted, compareTasksByUrgency } from '@/lib/task-helpers';
 import TaskDetailModal, { type TaskDetailInput } from '@/components/modals/CreateTaskModal';
@@ -176,12 +176,13 @@ function TaskLane({
     >
       {/* Lane header */}
       <div className="px-4 pt-4 pb-3 flex items-center gap-3">
-        <div
-          className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
-          style={{ backgroundColor: color.accent }}
-        >
-          {getInitials(memberName)}
-        </div>
+        <Avatar
+          src={undefined}
+          name={memberName}
+          userKey={memberId}
+          size="sm"
+          className="shrink-0"
+        />
         <div className="flex-1 min-w-0">
           <h3 className="text-sm font-semibold text-text-primary truncate">
             {memberName}

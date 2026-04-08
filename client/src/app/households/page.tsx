@@ -7,7 +7,7 @@ import AppNavbar from '@/components/shared/AppNavbar';
 import { listHouseholds, createHousehold } from '@/lib/households';
 import { joinHouseholdApi, sendEmailInviteApi } from '@/lib/households.api';
 import type { Household } from '@/types/households';
-import { getInitials, getAvatarColor } from '@/types/households';
+import Avatar from '@/components/ui/Avatar';
 import AddHouseholdModal from '@/components/modals/AddHouseholdModal';
 import JoinHouseholdModal from '@/components/modals/JoinHouseholdModal';
 
@@ -168,23 +168,23 @@ export default function HouseholdsPage() {
                                                     )}
                                                 </div>
 
-                                                <div className="flex gap-1 mt-2">
-                                                    {members.slice(0, 6).map((m) => (
-                                                        <div
-                                                            key={m.id}
-                                                            className="w-8 h-8 rounded-full border-2 border-divider flex items-center justify-center text-xs font-semibold text-white"
-                                                            style={{ backgroundColor: getAvatarColor(m.user.id) }}
-                                                            title={m.user.name}
-                                                        >
-                                                            {getInitials(m.user.name)}
-                                                        </div>
-                                                    ))}
-                                                    {memberCount > 6 && (
-                                                        <div className="w-8 h-8 rounded-full border-2 border-divider flex items-center justify-center text-xs font-semibold text-text-secondary bg-soft-highlight">
-                                                            +{memberCount - 6}
-                                                        </div>
-                                                    )}
-                                                </div>
+              <div className="flex gap-1 mt-2">
+                {members.slice(0, 6).map((m) => (
+                  <Avatar
+                    key={m.id}
+                    src={m.user.avatar}
+                    name={m.user.name}
+                    userKey={m.user.id}
+                    size="sm"
+                    className="border-2 border-divider"
+                  />
+                ))}
+                {memberCount > 6 && (
+                  <div className="w-8 h-8 rounded-full border-2 border-divider flex items-center justify-center text-xs font-semibold text-text-secondary bg-soft-highlight">
+                    +{memberCount - 6}
+                  </div>
+                )}
+              </div>
                                             </div>
 
                                             <svg
