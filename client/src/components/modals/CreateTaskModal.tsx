@@ -213,14 +213,6 @@ export default function TaskDetailModal({
                 )}
 
                 <div className="flex flex-wrap items-center gap-4 justify-end mt-2">
-                    {mode === 'edit' && onDelete && (
-                        <Button variant="danger" onClick={onDelete} disabled={isSubmitting}>
-                            Delete Task
-                        </Button>
-                    )}
-
-                    <div className="flex-1" />
-
                     <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>
                         Cancel
                     </Button>
@@ -233,6 +225,12 @@ export default function TaskDetailModal({
                     >
                         {isSubmitting ? 'Saving…' : 'Save Task'}
                     </Button>
+
+                    {mode === 'edit' && onDelete && (
+                        <Button variant="danger" onClick={onDelete} disabled={isSubmitting}>
+                            Delete Task
+                        </Button>
+                    )}
                 </div>
             </div>
         </BaseModal>

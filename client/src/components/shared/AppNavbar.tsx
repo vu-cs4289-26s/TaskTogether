@@ -8,8 +8,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { listHouseholdsApi } from '@/lib/households.api';
 import type { Household } from '@/types/households';
-import { getInitials, getAvatarColor } from '@/types/households'
+import Avatar from '@/components/ui/Avatar';
 import type { Notification } from '@/types/notifications';
+import { getInitials } from '@/types/households';
 
 interface AppNavbarProps {
   userName?: string;
@@ -71,8 +72,6 @@ export default function AppNavbar(props: AppNavbarProps) {
   // Detect current household from URL
   const householdMatch = pathname.match(/^\/households\/([^/]+)/);
   const currentHouseholdId = householdMatch?.[1] ?? null;
-
-  const avatarColor = getAvatarColor(user?.id);
 
   // Fetch households on mount
   useEffect(() => {
@@ -255,17 +254,18 @@ export default function AppNavbar(props: AppNavbarProps) {
           </li>
 
           {/* User avatar dropdown */}
-          <li className="relative" ref={dropdownRef}>
-            <div
-                onClick={() => setDropdownOpen((prev) => !prev)}
-                className={`w-10 h-10 rounded-full text-white flex items-center justify-center font-semibold cursor-pointer border-2 transition-all ${
+        <li className="relative" ref={dropdownRef}>
+          <div onClick={() => setDropdownOpen((prev) => !prev)} className="cursor-pointer">
+            <Avatar
+              src={user?.avatar}
+              name={userName}
+              userKey={user?.id}
+              size="md"
+              className={`border-2 transition-all ${
                 dropdownOpen ? 'border-sage scale-105' : 'border-divider hover:border-sage hover:scale-105'
-                }`}
-                style={{ backgroundColor: avatarColor }}
-                title={userName}
-            >
-                {userInitials}
-            </div>
+              }`}
+            />
+          </div>
 
             {dropdownOpen && (
               <div className="absolute right-0 mt-2 min-w-[200px] bg-surface border border-divider rounded-md shadow-md overflow-hidden z-50">

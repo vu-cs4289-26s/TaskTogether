@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation';
 import AppNavbar from '@/components/shared/AppNavbar';
 import { useAuth } from '@/contexts/AuthContext';
 import { Pencil, Plus, Maximize2 } from 'lucide-react';
+import EditProfileModal from '@/components/modals/EditProfileModal';
+import { updateProfileApi } from '@/lib/user.api';
+import Avatar from '@/components/ui/Avatar';
 
 import CalendarGrid from '@/components/calendar/CalendarGrid';
 import ActivityCard from '@/components/calendar/ActivityCard';
@@ -18,7 +21,6 @@ import { listHouseholdsApi } from '@/lib/households.api';
 import { listTasksApi, completeTaskApi, updateTaskApi, deleteTaskApi } from '@/lib/tasks.api';
 import type { Household } from '@/types/households';
 import type { Task, UpdateTaskInput } from '@/types/tasks';
-import { getAvatarColor } from '@/types/households';
 import { buildScheduledAt } from '@/lib/calendarDateTime';
 import { isTaskCompleted } from '@/lib/task-helpers';
 import { loadProfileActivities, saveProfileActivities } from '@/lib/profileActivities';
@@ -125,16 +127,13 @@ function formatTimeRange(activity: Activity) {
 
 export default function ProfilePage() {
   const router = useRouter();
-  const { user, loading } = useAuth();
+  const { user, loading, refreshUser } = useAuth();
   const error = !loading && !user ? 'Not logged in' : null;
 
-  const initials =
-    user?.name
-      ?.split(' ')
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((s) => s[0]!.toUpperCase())
-      .join('') ?? '??';
+  // Edit profile modal state
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
 
   // ---- tasks state ----
   const [households, setHouseholds] = useState<Household[]>([]);
@@ -271,7 +270,20 @@ export default function ProfilePage() {
   const [openEventDetails, setOpenEventDetails] = useState(false);
   const [activeActivity, setActiveActivity] = useState<Activity | null>(null);
 
-  const avatarColor = getAvatarColor(user?.id);
+  // ---- profile update handler ----
+  async function handleSaveProfile(input: { name: string; avatar?: string | null }) {
+    try {
+      setIsSavingProfile(true);
+      setProfileError(null);
+      await updateProfileApi(input);
+      await refreshUser();
+      setIsEditProfileOpen(false);
+    } catch {
+      setProfileError('Failed to update profile. Please try again.');
+    } finally {
+      setIsSavingProfile(false);
+    }
+  }
 
   function openActivity(activityId: string) {
     const found = activities.find((a) => a.id === activityId) ?? null;
@@ -461,13 +473,14 @@ export default function ProfilePage() {
       <AppNavbar />
 
       <div className="bg-surface border-b border-divider px-6 py-8">
-        <div className="max-w-[1400px] mx-auto flex items-center gap-6">
-            <div
-                className="w-24 h-24 rounded-full text-white flex items-center justify-center text-4xl font-bold border-4 border-divider flex-shrink-0"
-                style={{ backgroundColor: avatarColor }}
-                >
-                {loading ? '…' : initials}
-            </div>
+      <div className="max-w-[1400px] mx-auto flex items-center gap-6">
+        <Avatar
+          src={user?.avatar}
+          name={user?.name || 'User'}
+          userKey={user?.id}
+          size="xl"
+          className="border-4 border-divider"
+        />
 
           <div className="flex-1">
             <h1 className="text-[32px] font-heading font-bold mb-1">
@@ -498,14 +511,15 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          <button
-            className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium flex items-center gap-2 transition-all hover:bg-base hover:border-sage disabled:opacity-60"
-            disabled={loading || !!error}
-            type="button"
-          >
-            <Pencil className="w-4 h-4" />
-            Edit Profile
-          </button>
+        <button
+          className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium flex items-center gap-2 transition-all hover:bg-base hover:border-sage disabled:opacity-60"
+          disabled={loading || !!error}
+          type="button"
+          onClick={() => setIsEditProfileOpen(true)}
+        >
+          <Pencil className="w-4 h-4" />
+          Edit Profile
+        </button>
         </div>
       </div>
 
@@ -772,6 +786,22 @@ export default function ProfilePage() {
         onCreate={async () => {}}
         onUpdate={handleUpdateTask}
         onDelete={handleDeleteTask}
+      />
+
+      {/* Edit Profile Modal */}
+      <EditProfileModal
+        open={isEditProfileOpen}
+        initialValue={{ name: user?.name || '', avatar: user?.avatar || null }}
+        userKey={user?.id}
+        isSubmitting={isSavingProfile}
+        error={profileError}
+        onClose={() => {
+          if (!isSavingProfile) {
+            setIsEditProfileOpen(false);
+            setProfileError(null);
+          }
+        }}
+        onSave={handleSaveProfile}
       />
     </div>
   );

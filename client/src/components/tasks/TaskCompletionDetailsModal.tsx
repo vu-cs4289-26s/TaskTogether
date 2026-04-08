@@ -2,7 +2,7 @@
 
 import BaseModal from '@/components/modals/BaseModal';
 import Button from '@/components/ui/Button';
-import { getInitials, getAvatarColor } from '@/types/households';
+import Avatar from '@/components/ui/Avatar';
 import { formatDueDate, priorityStyles, priorityLabels } from '@/lib/task-helpers';
 import type { Task } from '@/types/tasks';
 
@@ -75,18 +75,18 @@ export default function TaskCompletionDetailsModal({
               </div>
               {task.completions.map((c) => (
                 <div key={c.id} className="flex flex-col gap-3">
-                  <div className="flex items-center gap-2 text-sm text-text-secondary">
-                    <div
-                      className="w-6 h-6 rounded-full text-white text-[10px] flex items-center justify-center"
-                      style={{ backgroundColor: getAvatarColor(c.user?.id ?? c.userId) }}
-                    >
-                      {c.user ? getInitials(c.user.name) : '?'}
-                    </div>
-                    {c.user && (
-                      <span className="font-medium text-text-primary">
-                        {c.user.id === currentUserId ? 'You' : c.user.name}
-                      </span>
-                    )}
+            <div className="flex items-center gap-2 text-sm text-text-secondary">
+              <Avatar
+                src={c.user?.avatar}
+                name={c.user?.name || '?'}
+                userKey={c.user?.id ?? c.userId}
+                size="xs"
+              />
+              {c.user && (
+                <span className="font-medium text-text-primary">
+                  {c.user.id === currentUserId ? 'You' : c.user.name}
+                </span>
+              )}
                     <span>&bull;</span>
                     <span>
                       {new Date(c.completedAt).toLocaleDateString('en-US', {

@@ -1,20 +1,22 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import BaseModal from '@/components/modals/BaseModal';
 import Button from '@/components/ui/Button';
 import Field, { inputClass } from '@/components/ui/Field';
+import Avatar from '@/components/ui/Avatar';
+import useImageUpload from '@/hooks/useImageUpload';
+import { uploadImageApi } from '@/lib/upload.api';
 
 export type EditProfileInput = {
-  fullName: string;
-  email: string;
-  phone?: string;
-  username?: string;
+  name: string;
+  avatar?: string | null;
 };
 
 type Props = {
   open: boolean;
   initialValue: EditProfileInput;
+  userKey?: string | null;
   isSubmitting: boolean;
   error: string | null;
   onClose: () => void;
@@ -25,6 +27,7 @@ type Props = {
 export default function EditProfileModal({
   open,
   initialValue,
+  userKey,
   isSubmitting,
   error,
   onClose,
@@ -33,39 +36,73 @@ export default function EditProfileModal({
 }: Props) {
   const defaults = useMemo(
     () => ({
-      fullName: initialValue.fullName ?? '',
-      email: initialValue.email ?? '',
-      phone: initialValue.phone ?? '',
-      username: initialValue.username ?? '',
+      name: initialValue.name ?? '',
+      avatar: initialValue.avatar ?? null,
     }),
     [initialValue]
   );
 
-  const [fullName, setFullName] = useState(defaults.fullName);
-  const [email, setEmail] = useState(defaults.email);
-  const [phone, setPhone] = useState(defaults.phone);
-  const [username, setUsername] = useState(defaults.username);
+  const [name, setName] = useState(defaults.name);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(defaults.avatar);
   const [localError, setLocalError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const { previews, addFiles, clearPreviews, uploadError, setUploadError } =
+    useImageUpload(1);
 
   useEffect(() => {
     if (!open) return;
-    setFullName(defaults.fullName);
-    setEmail(defaults.email);
-    setPhone(defaults.phone);
-    setUsername(defaults.username);
+    setName(defaults.name);
+    setAvatarUrl(defaults.avatar);
     setLocalError(null);
-  }, [open, defaults]);
+    setUploadError(null);
+    clearPreviews();
+  }, [open, defaults, clearPreviews, setUploadError]);
+
+  const previewUrl = previews[0]?.url ?? avatarUrl ?? null;
+  const hasNewFile = previews.length > 0;
+
+  function pickFile() {
+    fileInputRef.current?.click();
+  }
+
+  function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    addFiles(files);
+    e.target.value = '';
+  }
+
+  function removePhoto() {
+    clearPreviews();
+    setAvatarUrl(null);
+  }
 
   async function submit() {
-    if (!fullName.trim()) return setLocalError('Full name is required.');
-    if (!email.trim()) return setLocalError('Email is required.');
+    if (!name.trim()) {
+      setLocalError('Name is required.');
+      return;
+    }
     setLocalError(null);
 
+    let nextAvatar: string | null | undefined = undefined;
+
+    try {
+      if (hasNewFile) {
+        const file = previews[0].file;
+        const url = await uploadImageApi(file);
+        nextAvatar = url;
+      } else if (avatarUrl !== defaults.avatar) {
+        // user explicitly removed photo
+        nextAvatar = null;
+      }
+    } catch {
+      setLocalError('Failed to upload photo. Please try again.');
+      return;
+    }
+
     await onSave({
-      fullName: fullName.trim(),
-      email: email.trim(),
-      phone: phone.trim() || undefined,
-      username: username.trim() || undefined,
+      name: name.trim(),
+      ...(nextAvatar !== undefined ? { avatar: nextAvatar } : {}),
     });
   }
 
@@ -74,76 +111,83 @@ export default function EditProfileModal({
       open={open}
       ariaLabel="Edit profile"
       title="Edit Profile"
-      subtitle="Update your personal information"
+      subtitle="Update your display name and photo"
       isBlocking={isSubmitting}
       onClose={onClose}
       maxWidthClassName="max-w-[520px]"
     >
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-5">
+        <div className="flex items-center gap-5">
+          <Avatar
+            src={previewUrl}
+            name={name || 'User'}
+            userKey={userKey}
+            size="xl"
+          />
+          <div className="flex flex-col gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={onFileChange}
+              className="hidden"
+            />
+            <Button
+              variant="secondary"
+              onClick={pickFile}
+              disabled={isSubmitting}
+            >
+              {previewUrl ? 'Change Photo' : 'Upload Photo'}
+            </Button>
+            {previewUrl && (
+              <button
+                type="button"
+                onClick={removePhoto}
+                disabled={isSubmitting}
+                className="text-xs text-text-secondary hover:text-urgent transition-colors text-left"
+              >
+                Remove photo
+              </button>
+            )}
+            <p className="text-[11px] text-text-secondary">
+              JPG/PNG up to 10 MB
+            </p>
+          </div>
+        </div>
+
         <Field label="Full Name" required htmlFor="profile-name">
           <input
             id="profile-name"
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
             disabled={isSubmitting}
             className={inputClass}
             placeholder="Jordan Davis"
           />
         </Field>
 
-        <Field label="Email" required htmlFor="profile-email">
-          <input
-            id="profile-email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            disabled={isSubmitting}
-            className={inputClass}
-            placeholder="jordan.davis@email.com"
-          />
-        </Field>
+        {onDeleteAccount && (
+          <div className="mt-2 p-4 rounded-sm bg-soft-highlight border border-divider">
+            <div className="text-sm font-semibold text-text-primary">Danger Zone</div>
+            <p className="mt-1 text-[13px] text-text-secondary">
+              Deleting your account is permanent and cannot be undone.
+            </p>
+            <Button
+              variant="danger"
+              fullWidth
+              className="mt-3"
+              disabled={isSubmitting}
+              onClick={onDeleteAccount}
+            >
+              Delete Account
+            </Button>
+          </div>
+        )}
 
-        <Field label="Phone Number" htmlFor="profile-phone">
-          <input
-            id="profile-phone"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            disabled={isSubmitting}
-            className={inputClass}
-            placeholder="(555) 123-4567"
-          />
-        </Field>
-
-        <Field label="Username" htmlFor="profile-username">
-          <input
-            id="profile-username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            disabled={isSubmitting}
-            className={inputClass}
-            placeholder="Choose a username"
-          />
-        </Field>
-
-        <div className="mt-2 p-4 rounded-sm bg-soft-highlight border border-divider">
-          <div className="text-sm font-semibold text-text-primary">Danger Zone</div>
-          <p className="mt-1 text-[13px] text-text-secondary">
-            Deleting your account is permanent and cannot be undone.
-          </p>
-
-          <Button
-            variant="danger"
-            fullWidth
-            className="mt-3"
-            disabled={!onDeleteAccount || isSubmitting}
-            onClick={onDeleteAccount}
-          >
-            Delete Account
-          </Button>
-        </div>
-
-        {(localError || error) && (
-          <div className="text-sm text-urgent">{localError ?? error}</div>
+        {(localError || uploadError || error) && (
+          <div className="text-sm text-urgent">
+            {localError ?? uploadError ?? error}
+          </div>
         )}
 
         <div className="flex items-center gap-4 justify-end mt-2">
@@ -154,7 +198,7 @@ export default function EditProfileModal({
             variant="primary"
             lift
             onClick={submit}
-            disabled={isSubmitting || !fullName.trim() || !email.trim()}
+            disabled={isSubmitting || !name.trim()}
           >
             {isSubmitting ? 'Saving…' : 'Save Changes'}
           </Button>

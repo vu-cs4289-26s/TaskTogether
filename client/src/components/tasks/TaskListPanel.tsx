@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react';
 import { useState, useMemo } from 'react';
-import { getInitials, getAvatarColor } from '@/types/households';
+import Avatar from '@/components/ui/Avatar';
 import {
   priorityStyles,
   priorityLabels,
@@ -253,12 +253,12 @@ function TaskRow({
           <div className="flex items-center gap-1">
             {assignee ? (
               <>
-                <div
-                  className="w-5 h-5 rounded-full text-white text-[10px] flex items-center justify-center"
-                  style={{ backgroundColor: getAvatarColor(assignee.id) }}
-                >
-                  {getInitials(assignee.name)}
-                </div>
+                <Avatar
+                  src={assignee.avatar}
+                  name={assignee.name}
+                  userKey={assignee.id}
+                  size="xs"
+                />
                 <span>
                   {assignee.id === currentUserId ? 'You' : assignee.name}
                 </span>

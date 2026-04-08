@@ -20,6 +20,7 @@ interface AuthContextType {
     verifyTwoFactorLogin: (userId: string, code: string) => Promise<void>;
     register: (name: string, email: string, password: string) => Promise<void>;
     logout: () => void;
+    refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -125,6 +126,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(res.data.data.user);
     }, []);
 
+    const refreshUser = useCallback(async () => {
+        if (USE_MOCK) {
+            const u = await getCurrentUser();
+            setUser(u);
+            return;
+        }
+        const res = await api.get('/users/me');
+        setUser(res.data.data);
+    }, []);
+
     const logout = useCallback(() => {
         if (USE_MOCK) {
             clearMockLogin();
@@ -138,7 +149,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return (
         <AuthContext.Provider
-            value={{ user, loading, login, loginWithGoogle, verifyTwoFactorLogin, register, logout }}
+            value={{ user, loading, login, loginWithGoogle, verifyTwoFactorLogin, register, logout, refreshUser }}
         >
             {children}
         </AuthContext.Provider>

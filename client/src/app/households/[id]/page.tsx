@@ -12,7 +12,7 @@ import {
   deleteTaskApi,
 } from "@/lib/tasks.api";
 import type { Household } from "@/types/households";
-import { getInitials, getAvatarColor } from "@/types/households";
+import Avatar from "@/components/ui/Avatar";
 import type { Task, CreateTaskInput, UpdateTaskInput } from "@/types/tasks";
 import { isTaskCompleted } from "@/lib/task-helpers";
 import AddTaskModal from "@/components/households/AddTaskModal";
@@ -663,14 +663,14 @@ export default function HouseholdDashboardPage() {
             <div className="flex items-center gap-6 text-sm text-text-secondary flex-wrap">
               <div className="flex gap-1">
                 {members.slice(0, 6).map((m) => (
-                  <div
+                  <Avatar
                     key={m.id}
-                    className="w-8 h-8 rounded-full ring-2 ring-divider flex items-center justify-center text-xs font-semibold text-white"
-                    style={{ backgroundColor: getAvatarColor(m.user.id) }}
-                    title={m.user.name}
-                  >
-                    {getInitials(m.user.name)}
-                  </div>
+                    src={m.user.avatar}
+                    name={m.user.name}
+                    userKey={m.user.id}
+                    size="sm"
+                    className="ring-2 ring-divider"
+                  />
                 ))}
               </div>
 
@@ -703,6 +703,26 @@ export default function HouseholdDashboardPage() {
                 <path d="M23 21v-2a4 4 0 0 0-3-3.87m-4-12a4 4 0 0 1 0 7.75" />
               </svg>
               Manage Members
+            </button>
+            <button
+              onClick={() => router.push(`/households/${id}/wiki`)}
+              className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium flex items-center gap-2 transition-all hover:bg-base hover:border-sage"
+              type="button"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+                <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+              </svg>
+              Wiki
             </button>
           </div>
         </div>
