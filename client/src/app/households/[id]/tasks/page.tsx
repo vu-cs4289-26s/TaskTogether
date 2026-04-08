@@ -499,6 +499,8 @@ export default function TasksPage() {
             {household.name} &middot; {tasks.length} task{tasks.length !== 1 ? 's' : ''}
           </p>
         </div>
+        <div 
+          className="flex items-center gap-3"> 
         <button
           onClick={() => openCreateModal()}
           className="flex items-center gap-2 px-4 py-2.5 rounded-sm bg-sage text-white text-sm font-medium hover:bg-sage-hover transition-all hover:-translate-y-px"
@@ -506,6 +508,14 @@ export default function TasksPage() {
           <Plus size={16} />
           New Task
         </button>
+         <button
+            className="flex items-center gap-2 px-4 py-2.5 rounded-sm bg-sage text-white text-sm font-medium hover:bg-sage-hover transition-all hover:-translate-y-px"
+            type="button"
+            onClick={() => router.push(`/households/${householdId}`)}
+          >
+            Back to Dashboard
+          </button>
+        </div>
       </div>
 
       {/* Kanban board – infinite horizontal scroll */}
