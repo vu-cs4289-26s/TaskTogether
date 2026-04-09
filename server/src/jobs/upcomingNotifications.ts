@@ -55,8 +55,8 @@ async function checkUpcomingTasks(): Promise<void> {
 }
 
 export function startUpcomingNotificationsJob(): void {
-  // Run once on startup, then every hour
+  // Run once on startup, then every day
   checkUpcomingTasks();
-  setInterval(checkUpcomingTasks, ONE_HOUR_MS);
+  setInterval(checkUpcomingTasks, TWENTY_FOUR_HOURS_MS);
   console.log('[upcomingNotifications] Job started — checking every hour');
 }
