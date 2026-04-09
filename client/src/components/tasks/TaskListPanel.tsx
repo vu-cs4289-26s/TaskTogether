@@ -268,6 +268,16 @@ function TaskRow({
             )}
           </div>
 
+          {/* Creator - who assigned the task */}
+          {task.creator && task.creator.id !== assignee?.id && (
+            <>
+              <span>&bull;</span>
+              <span className="text-[11px] text-text-secondary">
+                by {task.creator.id === currentUserId ? 'you' : task.creator.name}
+              </span>
+            </>
+          )}
+
           <span>&bull;</span>
           <span>
             {done
