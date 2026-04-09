@@ -15,9 +15,7 @@ import {
 import type { Household, HouseholdMember } from "@/types/households";
 import type { Task } from "@/types/tasks";
 import TaskLane from "@/components/tasks/TaskLane";
-import TaskDetailModal, {
-  type TaskDetailInput,
-} from "@/components/modals/CreateTaskModal";
+import TaskModal, { type TaskFormData } from "@/components/modals/TaskModal";
 import CompleteTaskModal from "@/components/modals/CompleteTaskModal";
 import TaskDeleteModal from "@/components/tasks/TaskDeleteModal";
 import useDeleteFlow from "@/hooks/useDeleteFlow";
@@ -114,7 +112,7 @@ export default function TasksPage() {
   const members = useMemo(() => household?.members ?? [], [household]);
 
   const memberOptions = useMemo(
-    () => members.map((m) => ({ id: m.user.id, label: m.user.name })),
+    () => members.map((m) => ({ id: m.user.id, name: m.user.name })),
     [members],
   );
 
@@ -169,7 +167,7 @@ export default function TasksPage() {
     setCompleteModalOpen(true);
   }
 
-  async function handleSaveTask(input: TaskDetailInput) {
+  async function handleSaveTask(input: TaskFormData) {
     if (!householdId) return;
     setTaskSubmitting(true);
     setTaskError(null);
@@ -177,8 +175,8 @@ export default function TasksPage() {
     try {
       if (taskModalMode === "create") {
         await createTaskApi(householdId, {
-          title: input.name,
-          description: input.notes,
+          title: input.title,
+          description: input.description || undefined,
           dueDate: input.dueDate || undefined,
           priority: input.priority,
           isRecurring: input.recurrence !== "none",
@@ -186,12 +184,13 @@ export default function TasksPage() {
             input.recurrence !== "none"
               ? (input.recurrence as "daily" | "weekly" | "monthly")
               : undefined,
+          isRotating: input.isRotating,
           assignedToUserId: input.assigneeId || undefined,
         });
       } else if (editingTask) {
         await updateTaskApi(householdId, editingTask.id, {
-          title: input.name,
-          description: input.notes || null,
+          title: input.title,
+          description: input.description || null,
           dueDate: input.dueDate || null,
           priority: input.priority,
           isRecurring: input.recurrence !== "none",
@@ -199,6 +198,7 @@ export default function TasksPage() {
             input.recurrence !== "none"
               ? (input.recurrence as "daily" | "weekly" | "monthly")
               : undefined,
+          isRotating: input.isRotating,
         });
       }
       setTaskModalOpen(false);
@@ -361,14 +361,16 @@ export default function TasksPage() {
       </div>
 
       {/* Create / Edit Task Modal */}
-      <TaskDetailModal
+      <TaskModal
         open={taskModalOpen}
         mode={taskModalMode}
         members={memberOptions}
+        isAdmin={true}
         initialValue={
           editingTask
             ? {
-                name: editingTask.title,
+                title: editingTask.title,
+                description: editingTask.description ?? "",
                 assigneeId: editingTask.assignments[0]?.userId ?? "",
                 dueDate: editingTask.dueDate
                   ? new Date(editingTask.dueDate).toISOString().split("T")[0]
@@ -377,12 +379,13 @@ export default function TasksPage() {
                   ? ((editingTask.recurrencePattern as
                       | "daily"
                       | "weekly"
+                      | "biweekly"
                       | "monthly") ?? "none")
                   : "none",
                 priority:
                   (editingTask.priority as "high" | "medium" | "low") ??
                   "medium",
-                notes: editingTask.description ?? "",
+                isRotating: editingTask.isRotating,
               }
             : {
                 assigneeId: preselectedAssignee,
@@ -392,7 +395,7 @@ export default function TasksPage() {
         error={taskError}
         onClose={() => setTaskModalOpen(false)}
         onSave={handleSaveTask}
-        onDelete={taskModalMode === "edit" ? handleDeleteTask : undefined}
+        onRequestDelete={taskModalMode === "edit" ? handleDeleteTask : undefined}
       />
 
       {/* Delete Task Modal */}
