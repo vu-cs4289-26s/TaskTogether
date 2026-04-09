@@ -53,10 +53,7 @@ export default function HouseholdWikiPage() {
   const [manageError, setManageError] = useState<string | null>(null);
 
   const sectionSlugs = useMemo(
-    () =>
-      sections.length > 0
-        ? sections.map((s) => s.slug)
-        : [],
+    () => (sections.length > 0 ? sections.map((s) => s.slug) : []),
     [sections],
   );
 
@@ -67,19 +64,19 @@ export default function HouseholdWikiPage() {
     (async () => {
       setSectionsLoading(true);
       try {
-      const [data, household] = await Promise.all([
-        listWikiSectionsApi(householdId),
-        getHouseholdApi(householdId),
-      ]);
-      if (!cancelled) {
-        setSections(data);
-        setHouseholdName(household?.name ?? "");
-        // Check if current user is admin
-        const currentUserMembership = household?.members?.find(
-          (m) => m.userId === user?.id
-        );
-        setIsAdmin(currentUserMembership?.role === 'ADMIN');
-      }
+        const [data, household] = await Promise.all([
+          listWikiSectionsApi(householdId),
+          getHouseholdApi(householdId),
+        ]);
+        if (!cancelled) {
+          setSections(data);
+          setHouseholdName(household?.name ?? "");
+          // Check if current user is admin
+          const currentUserMembership = household?.members?.find(
+            (m) => m.userId === user?.id,
+          );
+          setIsAdmin(currentUserMembership?.role === "ADMIN");
+        }
       } catch {
         // gracefully handle
       } finally {
@@ -210,67 +207,65 @@ export default function HouseholdWikiPage() {
       <div className="bg-surface border-b border-divider">
         <div className="max-w-[1400px] mx-auto px-6 py-10 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
           <div>
-            <div className="flex items-center gap-3 mb-2">
-              <button
-                type="button"
-                onClick={() => router.push(`/households/${householdId}`)}
-                className="p-2 rounded-sm text-text-secondary hover:text-text-primary hover:bg-base transition-colors"
-                title="Back to household"
-              >
-                <ArrowLeft size={20} />
-              </button>
-              <h1 className="text-[32px] font-heading font-bold text-text-primary">
-                Household Wiki for {householdName}
-              </h1>
-            </div>
+            <h1 className="text-[32px] font-heading font-bold text-text-primary mb-2">
+              Household Wiki for {householdName}
+            </h1>
             <p className="text-sm text-text-secondary">
               Shared knowledge base for your household
             </p>
           </div>
 
-      <div className="flex items-center gap-3">
-        {editing ? (
-          <>
-            <button
-              type="button"
-              onClick={cancelEdit}
-              className="px-5 py-2.5 rounded-sm border border-divider text-text-secondary font-medium flex items-center gap-2 transition-all hover:bg-soft-highlight"
-            >
-              <X size={16} />
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={saveAll}
-              className="px-5 py-2.5 rounded-sm bg-sage text-white font-medium flex items-center gap-2 transition-all hover:bg-sage-hover hover:-translate-y-px"
-            >
-              <Save size={16} />
-              Save All
-            </button>
-          </>
-        ) : (
-          <>
-            <button
-              type="button"
-              onClick={() => setIsManageModalOpen(true)}
-              disabled={sectionsLoading}
-              className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium flex items-center gap-2 transition-all hover:bg-base hover:border-sage disabled:opacity-50"
-            >
-              <Settings size={16} />
-              Manage Sections
-            </button>
-            <button
-              type="button"
-              onClick={enterEdit}
-              disabled={sectionsLoading}
-              className="px-5 py-2.5 rounded-sm bg-sage text-white font-medium flex items-center gap-2 transition-all hover:bg-sage-hover hover:-translate-y-px disabled:opacity-50"
-            >
-              <Pencil size={16} />
-              Edit Wiki
-            </button>
-          </>
-        )}
-      </div>
+          <div className="flex items-center gap-3">
+            {editing ? (
+              <>
+                <button
+                  type="button"
+                  onClick={cancelEdit}
+                  className="px-5 py-2.5 rounded-sm border border-divider text-text-secondary font-medium flex items-center gap-2 transition-all hover:bg-soft-highlight"
+                >
+                  <X size={16} />
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={saveAll}
+                  className="px-5 py-2.5 rounded-sm bg-sage text-white font-medium flex items-center gap-2 transition-all hover:bg-sage-hover hover:-translate-y-px"
+                >
+                  <Save size={16} />
+                  Save All
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => router.push(`/households/${householdId}`)}
+                  className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium flex items-center gap-2 transition-all hover:bg-base hover:border-sage"
+                >
+                  <ArrowLeft size={16} />
+                  Back to Dashboard
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsManageModalOpen(true)}
+                  disabled={sectionsLoading}
+                  className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium flex items-center gap-2 transition-all hover:bg-base hover:border-sage disabled:opacity-50"
+                >
+                  <Settings size={16} />
+                  Manage Sections
+                </button>
+                <button
+                  type="button"
+                  onClick={enterEdit}
+                  disabled={sectionsLoading}
+                  className="px-5 py-2.5 rounded-sm bg-sage text-white font-medium flex items-center gap-2 transition-all hover:bg-sage-hover hover:-translate-y-px disabled:opacity-50"
+                >
+                  <Pencil size={16} />
+                  Edit Wiki
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -395,7 +390,7 @@ export default function HouseholdWikiPage() {
             const updated = await reorderWikiSectionsApi(householdId, order);
             setSections(updated);
           } catch {
-            setManageError('Failed to reorder sections. Please try again.');
+            setManageError("Failed to reorder sections. Please try again.");
           } finally {
             setIsManaging(false);
           }
@@ -407,10 +402,10 @@ export default function HouseholdWikiPage() {
             setManageError(null);
             const updated = await renameWikiSectionApi(householdId, slug, data);
             setSections((prev) =>
-              prev.map((s) => (s.slug === slug ? updated : s))
+              prev.map((s) => (s.slug === slug ? updated : s)),
             );
           } catch {
-            setManageError('Failed to rename section. Please try again.');
+            setManageError("Failed to rename section. Please try again.");
           } finally {
             setIsManaging(false);
           }
@@ -423,7 +418,7 @@ export default function HouseholdWikiPage() {
             await deleteWikiSectionApi(householdId, slug);
             setSections((prev) => prev.filter((s) => s.slug !== slug));
           } catch {
-            setManageError('Failed to delete section. Please try again.');
+            setManageError("Failed to delete section. Please try again.");
           } finally {
             setIsManaging(false);
           }
@@ -436,7 +431,7 @@ export default function HouseholdWikiPage() {
             const created = await createWikiSectionApi(householdId, data);
             setSections((prev) => [...prev, created]);
           } catch {
-            setManageError('Failed to create section. Please try again.');
+            setManageError("Failed to create section. Please try again.");
           } finally {
             setIsManaging(false);
           }

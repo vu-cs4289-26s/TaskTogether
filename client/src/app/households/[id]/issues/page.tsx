@@ -798,7 +798,7 @@ export default function IssuesPage() {
                     }}
                     onSubmit={handleEditSubmit}
                 />
-            )}s
+            )}
 
             <BaseModal
                 open={isDetailOpen && Boolean(selectedIssue)}

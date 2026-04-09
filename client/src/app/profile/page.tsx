@@ -1,58 +1,74 @@
-'use client';
+"use client";
 
-import { useEffect, useMemo, useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
-import AppNavbar from '@/components/shared/AppNavbar';
-import { useAuth } from '@/contexts/AuthContext';
-import { Pencil, Plus, Maximize2 } from 'lucide-react';
-import EditProfileModal from '@/components/modals/EditProfileModal';
-import { updateProfileApi } from '@/lib/user.api';
-import Avatar from '@/components/ui/Avatar';
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import AppNavbar from "@/components/shared/AppNavbar";
+import { useAuth } from "@/contexts/AuthContext";
+import { Pencil, Plus, Maximize2 } from "lucide-react";
+import EditProfileModal from "@/components/modals/EditProfileModal";
+import { updateProfileApi } from "@/lib/user.api";
+import Avatar from "@/components/ui/Avatar";
 
-import CalendarGrid from '@/components/calendar/CalendarGrid';
-import ActivityCard from '@/components/calendar/ActivityCard';
-import CreateEventModal, { type EventDetailInput } from '@/components/modals/CreateEventModal';
-import type { Activity, CreateActivityInput } from '@/types/activities';
+import CalendarGrid from "@/components/calendar/CalendarGrid";
+import ActivityCard from "@/components/calendar/ActivityCard";
+import CreateEventModal, {
+  type EventDetailInput,
+} from "@/components/modals/CreateEventModal";
+import type { Activity, CreateActivityInput } from "@/types/activities";
 
-import BaseModal from '@/components/modals/BaseModal';
-import Button from '@/components/ui/Button';
+import BaseModal from "@/components/modals/BaseModal";
+import Button from "@/components/ui/Button";
 
-import { listHouseholdsApi } from '@/lib/households.api';
-import { listTasksApi, completeTaskApi, updateTaskApi, deleteTaskApi } from '@/lib/tasks.api';
-import type { Household } from '@/types/households';
-import type { Task, UpdateTaskInput } from '@/types/tasks';
-import { buildScheduledAt } from '@/lib/calendarDateTime';
-import { isTaskCompleted } from '@/lib/task-helpers';
-import { loadProfileActivities, saveProfileActivities } from '@/lib/profileActivities';
-import TaskListPanel from '@/components/tasks/TaskListPanel';
-import TaskCompletionDetailsModal from '@/components/tasks/TaskCompletionDetailsModal';
-import CompleteTaskModal from '@/components/modals/CompleteTaskModal';
-import AddTaskModal from '@/components/households/AddTaskModal';
+import { listHouseholdsApi } from "@/lib/households.api";
+import {
+  listTasksApi,
+  completeTaskApi,
+  updateTaskApi,
+  deleteTaskApi,
+} from "@/lib/tasks.api";
+import type { Household } from "@/types/households";
+import type { Task, UpdateTaskInput } from "@/types/tasks";
+import { buildScheduledAt } from "@/lib/calendarDateTime";
+import { isTaskCompleted } from "@/lib/task-helpers";
+import {
+  loadProfileActivities,
+  saveProfileActivities,
+} from "@/lib/profileActivities";
+import TaskListPanel from "@/components/tasks/TaskListPanel";
+import TaskCompletionDetailsModal from "@/components/tasks/TaskCompletionDetailsModal";
+import CompleteTaskModal from "@/components/modals/CompleteTaskModal";
+import AddTaskModal from "@/components/households/AddTaskModal";
 
 function pad2(n: number) {
-  return String(n).padStart(2, '0');
+  return String(n).padStart(2, "0");
 }
 function dateKeyLocal(d: Date) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 function monthLabel(year: number, month: number) {
-  return new Date(year, month, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  return new Date(year, month, 1).toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
 }
 // ---- tag helpers (same idea as household) ----
-function extractTag(desc: string | null | undefined, key: string): string | null {
+function extractTag(
+  desc: string | null | undefined,
+  key: string,
+): string | null {
   if (!desc) return null;
-  const re = new RegExp(`\\[\\[${key}:([^\\]]+)\\]\\]`, 'i');
+  const re = new RegExp(`\\[\\[${key}:([^\\]]+)\\]\\]`, "i");
   const m = desc.match(re);
   return m?.[1]?.trim() ?? null;
 }
 
 function safeTagValue(v: string) {
-  return v.replace(/\]/g, '').trim();
+  return v.replace(/\]/g, "").trim();
 }
 
 function withTags(desc: string | undefined, input: EventDetailInput) {
   const parts: string[] = [];
-  const base = (desc ?? '').trim();
+  const base = (desc ?? "").trim();
   if (base) parts.push(stripTags(base));
 
   parts.push(`[[TT_TYPE:${safeTagValue(String(input.type))}]]`);
@@ -62,73 +78,72 @@ function withTags(desc: string | undefined, input: EventDetailInput) {
   }
 
   if (input.allDay) {
-    parts.push('[[TT_ALLDAY:1]]');
+    parts.push("[[TT_ALLDAY:1]]");
   } else if (input.endTime) {
     parts.push(`[[TT_END:${safeTagValue(input.endTime)}]]`);
   }
 
-  return parts.join(' ').trim();
+  return parts.join(" ").trim();
 }
 
 function stripTags(desc: string) {
   return desc
-    .replace(/\[\[TT_TYPE:[a-z-]+\]\]/gi, '')
-    .replace(/\[\[TT_END:[0-9:]+\]\]/gi, '')
-    .replace(/\[\[TT_LOC:[^\]]+\]\]/gi, '')
-    .replace(/\[\[TT_ALLDAY:1\]\]/gi, '')
+    .replace(/\[\[TT_TYPE:[a-z-]+\]\]/gi, "")
+    .replace(/\[\[TT_END:[0-9:]+\]\]/gi, "")
+    .replace(/\[\[TT_LOC:[^\]]+\]\]/gi, "")
+    .replace(/\[\[TT_ALLDAY:1\]\]/gi, "")
     .trim();
 }
 
 function prettySubtypeTitle(subtype: string | null): string {
-  const s = (subtype ?? '').toLowerCase();
+  const s = (subtype ?? "").toLowerCase();
   switch (s) {
-    case 'personal':
-      return 'Personal Event';
-    case 'household':
-      return 'Household Event';
+    case "personal":
+      return "Personal Event";
+    case "household":
+      return "Household Event";
     default:
-      return s ? s : 'Event';
+      return s ? s : "Event";
   }
 }
 
 function formatTimeRange(activity: Activity) {
   const start = new Date(activity.scheduledAt);
 
-  const isAllDay = extractTag(activity.description, 'TT_ALLDAY') === '1';
-  const endStr = extractTag(activity.description, 'TT_END'); // "HH:MM"
+  const isAllDay = extractTag(activity.description, "TT_ALLDAY") === "1";
+  const endStr = extractTag(activity.description, "TT_END"); // "HH:MM"
 
-  const datePart = start.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
+  const datePart = start.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
   });
 
   if (isAllDay) return `${datePart} • All day`;
 
-  const startTime = start.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
+  const startTime = start.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
   });
 
   if (!endStr) return `${datePart}, ${startTime}`;
 
-  const [hh, mm] = endStr.split(':').map((x) => parseInt(x, 10));
+  const [hh, mm] = endStr.split(":").map((x) => parseInt(x, 10));
   const end = new Date(start);
   end.setHours(hh || 0, mm || 0, 0, 0);
 
-  const endTime = end.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
+  const endTime = end.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
   });
 
   return `${datePart}, ${startTime} – ${endTime}`;
 }
 
-
 export default function ProfilePage() {
   const router = useRouter();
   const { user, loading, refreshUser } = useAuth();
-  const error = !loading && !user ? 'Not logged in' : null;
+  const error = !loading && !user ? "Not logged in" : null;
 
   // Edit profile modal state
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
@@ -162,7 +177,9 @@ export default function ProfilePage() {
       setHouseholds(hsList);
 
       const taskResults = await Promise.all(
-        hsList.map((h) => listTasksApi(h.id, { limit: 50, assignedToMe: true }))
+        hsList.map((h) =>
+          listTasksApi(h.id, { limit: 50, assignedToMe: true }),
+        ),
       );
 
       const combined: Task[] = [];
@@ -185,12 +202,18 @@ export default function ProfilePage() {
   }, [loading, user, fetchAllTasks]);
 
   // ---- derived task data ----
-  const activeTasks = useMemo(() => allTasks.filter((t) => !isTaskCompleted(t)), [allTasks]);
-  const completedTasks = useMemo(() => allTasks.filter((t) => isTaskCompleted(t)), [allTasks]);
+  const activeTasks = useMemo(
+    () => allTasks.filter((t) => !isTaskCompleted(t)),
+    [allTasks],
+  );
+  const completedTasks = useMemo(
+    () => allTasks.filter((t) => isTaskCompleted(t)),
+    [allTasks],
+  );
 
   // Helper: find household name for a task
   function getHouseholdName(householdId: string): string {
-    return households.find((h) => h.id === householdId)?.name ?? 'Unknown';
+    return households.find((h) => h.id === householdId)?.name ?? "Unknown";
   }
 
   // Helper: find household members for the editing task
@@ -200,17 +223,30 @@ export default function ProfilePage() {
     return hh?.members ?? [];
   }
 
+  function getIsAdminForTask(task: Task | null) {
+    if (!task) return false;
+    const hh = households.find((h) => h.id === task.householdId);
+    return hh?.myRole === "ADMIN";
+  }
+
   // ---- task action handlers ----
-  async function handleCompleteTask(input: { notes?: string; photoUrl?: string }) {
+  async function handleCompleteTask(input: {
+    notes?: string;
+    photoUrl?: string;
+  }) {
     if (!completingTask) return;
     try {
       setIsCompleting(true);
       setCompleteError(null);
-      await completeTaskApi(completingTask.householdId, completingTask.id, input);
+      await completeTaskApi(
+        completingTask.householdId,
+        completingTask.id,
+        input,
+      );
       setCompletingTask(null);
       await fetchAllTasks();
     } catch {
-      setCompleteError('Failed to complete task. Please try again.');
+      setCompleteError("Failed to complete task. Please try again.");
     } finally {
       setIsCompleting(false);
     }
@@ -225,7 +261,7 @@ export default function ProfilePage() {
       setEditingTask(null);
       await fetchAllTasks();
     } catch {
-      setEditTaskError('Failed to update task. Please try again.');
+      setEditTaskError("Failed to update task. Please try again.");
     } finally {
       setIsEditingTask(false);
     }
@@ -240,7 +276,7 @@ export default function ProfilePage() {
       setEditingTask(null);
       await fetchAllTasks();
     } catch {
-      setEditTaskError('Failed to delete task. Please try again.');
+      setEditTaskError("Failed to delete task. Please try again.");
     } finally {
       setIsEditingTask(false);
     }
@@ -271,7 +307,10 @@ export default function ProfilePage() {
   const [activeActivity, setActiveActivity] = useState<Activity | null>(null);
 
   // ---- profile update handler ----
-  async function handleSaveProfile(input: { name: string; avatar?: string | null }) {
+  async function handleSaveProfile(input: {
+    name: string;
+    avatar?: string | null;
+  }) {
     try {
       setIsSavingProfile(true);
       setProfileError(null);
@@ -279,7 +318,7 @@ export default function ProfilePage() {
       await refreshUser();
       setIsEditProfileOpen(false);
     } catch {
-      setProfileError('Failed to update profile. Please try again.');
+      setProfileError("Failed to update profile. Please try again.");
     } finally {
       setIsSavingProfile(false);
     }
@@ -296,24 +335,27 @@ export default function ProfilePage() {
     setActiveActivity(null);
   }
 
-  function activityToEventDetailInput(activity: Activity): Partial<EventDetailInput> {
+  function activityToEventDetailInput(
+    activity: Activity,
+  ): Partial<EventDetailInput> {
     const scheduled = new Date(activity.scheduledAt);
     const isoDate = `${scheduled.getFullYear()}-${pad2(scheduled.getMonth() + 1)}-${pad2(scheduled.getDate())}`;
     const start = `${pad2(scheduled.getHours())}:${pad2(scheduled.getMinutes())}`;
 
-    const subtype = extractTag(activity.description, 'TT_TYPE')?.toLowerCase() ?? 'personal';
-    const isAllDay = extractTag(activity.description, 'TT_ALLDAY') === '1';
-    const endTime = extractTag(activity.description, 'TT_END') ?? '';
-    const location = extractTag(activity.description, 'TT_LOC') ?? '';
+    const subtype =
+      extractTag(activity.description, "TT_TYPE")?.toLowerCase() ?? "personal";
+    const isAllDay = extractTag(activity.description, "TT_ALLDAY") === "1";
+    const endTime = extractTag(activity.description, "TT_END") ?? "";
+    const location = extractTag(activity.description, "TT_LOC") ?? "";
 
     return {
       name: activity.title,
-      type: subtype as EventDetailInput['type'],
+      type: subtype as EventDetailInput["type"],
       date: isoDate,
       startTime: start,
       endTime,
       location,
-      description: activity.description ? stripTags(activity.description) : '',
+      description: activity.description ? stripTags(activity.description) : "",
       allDay: isAllDay,
     };
   }
@@ -372,12 +414,15 @@ export default function ProfilePage() {
       const scheduledAt = buildScheduledAt(input);
 
       // store type + end time tags for dots + modal time range
-      const taggedDescription = withTags(input.description?.trim() || undefined, input);
+      const taggedDescription = withTags(
+        input.description?.trim() || undefined,
+        input,
+      );
 
       const createInput: CreateActivityInput = {
         title: input.name,
         description: taggedDescription,
-        activityType: 'OTHER', // CalendarGrid uses TT_TYPE for color
+        activityType: "OTHER", // CalendarGrid uses TT_TYPE for color
         scheduledAt,
       };
 
@@ -386,11 +431,11 @@ export default function ProfilePage() {
         title: createInput.title,
         description: createInput.description ?? null,
         activityType: createInput.activityType,
-        status: 'SCHEDULED',
+        status: "SCHEDULED",
         scheduledAt: createInput.scheduledAt,
         startedAt: null,
         completedAt: null,
-        householdId: 'profile',
+        householdId: "profile",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         participants: [],
@@ -400,7 +445,7 @@ export default function ProfilePage() {
       setActivities((prev) => [created, ...prev]);
       setIsAddEventOpen(false);
     } catch {
-      setCreateEventError('Failed to create event.');
+      setCreateEventError("Failed to create event.");
     } finally {
       setIsCreatingEvent(false);
     }
@@ -414,7 +459,10 @@ export default function ProfilePage() {
       setUpdateEventError(null);
 
       const scheduledAt = buildScheduledAt(input);
-      const taggedDescription = withTags(input.description?.trim() || undefined, input);
+      const taggedDescription = withTags(
+        input.description?.trim() || undefined,
+        input,
+      );
 
       setActivities((prev) =>
         prev.map((a) =>
@@ -426,15 +474,15 @@ export default function ProfilePage() {
                 description: taggedDescription,
                 updatedAt: new Date().toISOString(),
               }
-            : a
-        )
+            : a,
+        ),
       );
 
       setIsEditEventOpen(false);
       setEditingActivity(null);
       closeActivity();
     } catch {
-      setUpdateEventError('Failed to update event.');
+      setUpdateEventError("Failed to update event.");
     } finally {
       setIsUpdatingEvent(false);
     }
@@ -451,7 +499,7 @@ export default function ProfilePage() {
       setEditingActivity(null);
       closeActivity();
     } catch {
-      setUpdateEventError('Failed to delete event.');
+      setUpdateEventError("Failed to delete event.");
     } finally {
       setIsUpdatingEvent(false);
     }
@@ -473,21 +521,23 @@ export default function ProfilePage() {
       <AppNavbar />
 
       <div className="bg-surface border-b border-divider px-6 py-8">
-      <div className="max-w-[1400px] mx-auto flex items-center gap-6">
-        <Avatar
-          src={user?.avatar}
-          name={user?.name || 'User'}
-          userKey={user?.id}
-          size="xl"
-          className="border-4 border-divider"
-        />
+        <div className="max-w-[1400px] mx-auto flex items-center gap-6">
+          <Avatar
+            src={user?.avatar}
+            name={user?.name || "User"}
+            userKey={user?.id}
+            size="xl"
+            className="border-4 border-divider"
+          />
 
           <div className="flex-1">
             <h1 className="text-[32px] font-heading font-bold mb-1">
-              {loading ? 'Loading…' : user?.name ?? 'Unknown User'}
+              {loading ? "Loading…" : (user?.name ?? "Unknown User")}
             </h1>
 
-            <p className="text-text-secondary text-sm mb-3">{loading ? '' : user?.email ?? ''}</p>
+            <p className="text-text-secondary text-sm mb-3">
+              {loading ? "" : (user?.email ?? "")}
+            </p>
 
             {error && (
               <div className="mt-2 inline-block px-3 py-2 bg-urgent/10 border border-urgent/30 rounded-sm text-urgent text-sm">
@@ -497,29 +547,41 @@ export default function ProfilePage() {
 
             <div className="flex gap-6 mt-3">
               <div className="flex flex-col">
-                <span className="text-2xl font-bold text-sage">{tasksLoading ? '–' : activeTasks.length}</span>
-                <span className="text-[13px] text-text-secondary uppercase tracking-wide">Active Tasks</span>
+                <span className="text-2xl font-bold text-sage">
+                  {tasksLoading ? "–" : activeTasks.length}
+                </span>
+                <span className="text-[13px] text-text-secondary uppercase tracking-wide">
+                  Active Tasks
+                </span>
               </div>
               <div className="flex flex-col">
-                <span className="text-2xl font-bold text-sage">{tasksLoading ? '–' : households.length}</span>
-                <span className="text-[13px] text-text-secondary uppercase tracking-wide">Households</span>
+                <span className="text-2xl font-bold text-sage">
+                  {tasksLoading ? "–" : households.length}
+                </span>
+                <span className="text-[13px] text-text-secondary uppercase tracking-wide">
+                  Households
+                </span>
               </div>
               <div className="flex flex-col">
-                <span className="text-2xl font-bold text-sage">{tasksLoading ? '–' : completedTasks.length}</span>
-                <span className="text-[13px] text-text-secondary uppercase tracking-wide">Completed</span>
+                <span className="text-2xl font-bold text-sage">
+                  {tasksLoading ? "–" : completedTasks.length}
+                </span>
+                <span className="text-[13px] text-text-secondary uppercase tracking-wide">
+                  Completed
+                </span>
               </div>
             </div>
           </div>
 
-        <button
-          className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium flex items-center gap-2 transition-all hover:bg-base hover:border-sage disabled:opacity-60"
-          disabled={loading || !!error}
-          type="button"
-          onClick={() => setIsEditProfileOpen(true)}
-        >
-          <Pencil className="w-4 h-4" />
-          Edit Profile
-        </button>
+          <button
+            className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium flex items-center gap-2 transition-all hover:bg-base hover:border-sage disabled:opacity-60"
+            disabled={loading || !!error}
+            type="button"
+            onClick={() => setIsEditProfileOpen(true)}
+          >
+            <Pencil className="w-4 h-4" />
+            Edit Profile
+          </button>
         </div>
       </div>
 
@@ -533,7 +595,9 @@ export default function ProfilePage() {
           onComplete={(task) => setCompletingTask(task)}
           onEdit={(task) => setEditingTask(task)}
           onViewCompleted={(task) => setViewingTask(task)}
-          canEdit={(task) => task.assignments.some((a) => a.userId === user?.id)}
+          canEdit={(task) =>
+            task.assignments.some((a) => a.userId === user?.id)
+          }
           getSubtitle={(task) => getHouseholdName(task.householdId)}
           emptyMessage="No tasks assigned to you yet."
           tabCounts={{
@@ -541,15 +605,6 @@ export default function ProfilePage() {
             pending: activeTasks.length,
             completed: completedTasks.length,
           }}
-          headerActions={
-            <button
-              type="button"
-              onClick={() => router.push('/profile/tasks')}
-              className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium transition-all hover:bg-base hover:border-sage"
-            >
-              Taskboard
-            </button>
-          }
         />
 
         {/* Calendar Section */}
@@ -558,14 +613,14 @@ export default function ProfilePage() {
             <h2 className="text-xl font-semibold text-sage">My Calendar</h2>
             <div className="flex items-center gap-2">
               <button
-  className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium flex items-center gap-2 transition-all hover:bg-base hover:border-sage"
-  type="button"
-  onClick={() => router.push('/profile/calendar')}
-  disabled={loading || !!error}
->
-  <Maximize2 className="w-4 h-4" />
-  Full Calendar
-</button>
+                className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium flex items-center gap-2 transition-all hover:bg-base hover:border-sage"
+                type="button"
+                onClick={() => router.push("/profile/calendar")}
+                disabled={loading || !!error}
+              >
+                <Maximize2 className="w-4 h-4" />
+                Full Calendar
+              </button>
 
               <button
                 className="px-5 py-2.5 rounded-sm border border-divider bg-transparent text-text-primary font-medium flex items-center gap-2 transition-all hover:bg-base hover:border-sage"
@@ -583,7 +638,9 @@ export default function ProfilePage() {
           </div>
 
           <div className="flex justify-between items-center mb-4">
-            <span className="font-semibold text-base text-text-primary">{monthLabel(calYear, calMonth)}</span>
+            <span className="font-semibold text-base text-text-primary">
+              {monthLabel(calYear, calMonth)}
+            </span>
             <div className="flex gap-2">
               <button
                 className="w-8 h-8 border border-divider bg-transparent rounded text-text-primary hover:bg-soft-highlight hover:border-sage transition-all"
@@ -615,20 +672,27 @@ export default function ProfilePage() {
           <div className="mt-5">
             <div className="text-sm font-semibold text-text-primary">
               {selectedDate
-                ? `Events on ${selectedDate.toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric',
+                ? `Events on ${selectedDate.toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
                   })}`
-                : 'Select a day to see events'}
+                : "Select a day to see events"}
             </div>
 
             {selectedDate && activitiesForSelectedDay.length === 0 ? (
-              <div className="text-sm text-text-secondary mt-2">No events scheduled for this day.</div>
+              <div className="text-sm text-text-secondary mt-2">
+                No events scheduled for this day.
+              </div>
             ) : (
               <div className="mt-3 flex flex-col gap-3">
                 {activitiesForSelectedDay.map((a) => (
-                  <ActivityCard key={a.id} activity={a} currentUserId={user?.id} onClick={openActivity} />
+                  <ActivityCard
+                    key={a.id}
+                    activity={a}
+                    currentUserId={user?.id}
+                    onClick={openActivity}
+                  />
                 ))}
               </div>
             )}
@@ -668,7 +732,11 @@ export default function ProfilePage() {
         open={isEditEventOpen}
         mode="edit"
         context="profile"
-        initialValue={editingActivity ? activityToEventDetailInput(editingActivity) : undefined}
+        initialValue={
+          editingActivity
+            ? activityToEventDetailInput(editingActivity)
+            : undefined
+        }
         isSubmitting={isUpdatingEvent}
         error={updateEventError}
         onClose={() => {
@@ -686,10 +754,10 @@ export default function ProfilePage() {
       <BaseModal
         open={openEventDetails}
         ariaLabel="Event details"
-        title={activeActivity?.title ?? 'Event Details'}
+        title={activeActivity?.title ?? "Event Details"}
         subtitle={
           activeActivity
-            ? `${prettySubtypeTitle(extractTag(activeActivity.description, 'TT_TYPE'))} • ${formatTimeRange(activeActivity)}`
+            ? `${prettySubtypeTitle(extractTag(activeActivity.description, "TT_TYPE"))} • ${formatTimeRange(activeActivity)}`
             : undefined
         }
         onClose={closeActivity}
@@ -697,7 +765,9 @@ export default function ProfilePage() {
       >
         <div className="flex flex-col gap-4">
           <div className="text-sm text-text-secondary whitespace-pre-wrap">
-            {activeActivity?.description ? stripTags(activeActivity.description) : 'No description.'}
+            {activeActivity?.description
+              ? stripTags(activeActivity.description)
+              : "No description."}
           </div>
 
           <div className="flex justify-end gap-2">
@@ -707,7 +777,9 @@ export default function ProfilePage() {
               onClick={() => {
                 if (!activeActivity) return;
                 const deletingId = activeActivity.id;
-                setActivities((prev) => prev.filter((a) => a.id !== deletingId));
+                setActivities((prev) =>
+                  prev.filter((a) => a.id !== deletingId),
+                );
                 closeActivity();
               }}
               disabled={!activeActivity}
@@ -744,11 +816,16 @@ export default function ProfilePage() {
           viewingTask
             ? `${getHouseholdName(viewingTask.householdId)} • ${
                 viewingTask.completions[0]?.completedAt
-                  ? `Completed ${new Date(viewingTask.completions[0].completedAt).toLocaleDateString('en-US', {
-                      month: 'long', day: 'numeric', year: 'numeric',
-                      hour: 'numeric', minute: '2-digit',
+                  ? `Completed ${new Date(
+                      viewingTask.completions[0].completedAt,
+                    ).toLocaleDateString("en-US", {
+                      month: "long",
+                      day: "numeric",
+                      year: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
                     })}`
-                  : 'Completed'
+                  : "Completed"
               }`
             : undefined
         }
@@ -758,7 +835,7 @@ export default function ProfilePage() {
       {/* Complete Task Modal */}
       <CompleteTaskModal
         open={!!completingTask}
-        taskTitle={completingTask?.title || ''}
+        taskTitle={completingTask?.title || ""}
         isSubmitting={isCompleting}
         error={completeError}
         onClose={() => {
@@ -776,6 +853,8 @@ export default function ProfilePage() {
         isSubmitting={isEditingTask}
         error={editTaskError}
         members={getMembersForTask(editingTask)}
+        isAdmin={getIsAdminForTask(editingTask)}
+        currentUserId={user?.id}
         editingTask={editingTask}
         onClose={() => {
           if (!isEditingTask) {
@@ -791,7 +870,7 @@ export default function ProfilePage() {
       {/* Edit Profile Modal */}
       <EditProfileModal
         open={isEditProfileOpen}
-        initialValue={{ name: user?.name || '', avatar: user?.avatar || null }}
+        initialValue={{ name: user?.name || "", avatar: user?.avatar || null }}
         userKey={user?.id}
         isSubmitting={isSavingProfile}
         error={profileError}
