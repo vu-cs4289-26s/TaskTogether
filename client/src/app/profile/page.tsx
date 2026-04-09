@@ -27,7 +27,7 @@ import {
   deleteTaskApi,
 } from "@/lib/tasks.api";
 import type { Household } from "@/types/households";
-import type { Task, UpdateTaskInput } from "@/types/tasks";
+import type { Task } from "@/types/tasks";
 import { buildScheduledAt } from "@/lib/calendarDateTime";
 import { isTaskCompleted } from "@/lib/task-helpers";
 import {
@@ -37,7 +37,9 @@ import {
 import TaskListPanel from "@/components/tasks/TaskListPanel";
 import TaskCompletionDetailsModal from "@/components/tasks/TaskCompletionDetailsModal";
 import CompleteTaskModal from "@/components/modals/CompleteTaskModal";
-import AddTaskModal from "@/components/households/AddTaskModal";
+import TaskModal, { type TaskFormData } from "@/components/modals/TaskModal";
+import TaskDeleteModal from "@/components/tasks/TaskDeleteModal";
+import useDeleteFlow from "@/hooks/useDeleteFlow";
 
 function pad2(n: number) {
   return String(n).padStart(2, "0");
@@ -168,6 +170,17 @@ export default function ProfilePage() {
   const [isEditingTask, setIsEditingTask] = useState(false);
   const [editTaskError, setEditTaskError] = useState<string | null>(null);
 
+  // Delete flow hook
+  const {
+    isDeleteOpen,
+    deleteTarget,
+    isDeleting,
+    setIsDeleting,
+    openDelete,
+    closeDelete,
+    forceCloseDelete,
+  } = useDeleteFlow<Task>();
+
   // ---- fetch households + tasks ----
   const fetchAllTasks = useCallback(async () => {
     if (!user) return;
@@ -220,7 +233,7 @@ export default function ProfilePage() {
   function getMembersForTask(task: Task | null) {
     if (!task) return [];
     const hh = households.find((h) => h.id === task.householdId);
-    return hh?.members ?? [];
+    return (hh?.members ?? []).map((m) => ({ id: m.user.id, name: m.user.name }));
   }
 
   function getIsAdminForTask(task: Task | null) {
@@ -252,33 +265,24 @@ export default function ProfilePage() {
     }
   }
 
-  async function handleUpdateTask(input: UpdateTaskInput) {
+  function handleRequestDelete() {
     if (!editingTask) return;
-    try {
-      setIsEditingTask(true);
-      setEditTaskError(null);
-      await updateTaskApi(editingTask.householdId, editingTask.id, input);
-      setEditingTask(null);
-      await fetchAllTasks();
-    } catch {
-      setEditTaskError("Failed to update task. Please try again.");
-    } finally {
-      setIsEditingTask(false);
-    }
+    setEditingTask(null);
+    openDelete(editingTask);
   }
 
-  async function handleDeleteTask() {
-    if (!editingTask) return;
+  async function confirmDeleteTask(taskId: string) {
+    if (!deleteTarget) return;
     try {
-      setIsEditingTask(true);
-      setEditTaskError(null);
-      await deleteTaskApi(editingTask.householdId, editingTask.id);
-      setEditingTask(null);
+      setIsDeleting(true);
+      await deleteTaskApi(deleteTarget.householdId, taskId);
+      setAllTasks((prev) => prev.filter((t) => t.id !== taskId));
+      forceCloseDelete();
       await fetchAllTasks();
     } catch {
-      setEditTaskError("Failed to delete task. Please try again.");
+      // Error is shown in modal
     } finally {
-      setIsEditingTask(false);
+      setIsDeleting(false);
     }
   }
 
@@ -848,23 +852,78 @@ export default function ProfilePage() {
       />
 
       {/* Edit Task Modal */}
-      <AddTaskModal
+      <TaskModal
         open={!!editingTask}
+        mode="edit"
         isSubmitting={isEditingTask}
         error={editTaskError}
         members={getMembersForTask(editingTask)}
         isAdmin={getIsAdminForTask(editingTask)}
         currentUserId={user?.id}
-        editingTask={editingTask}
+        initialValue={
+          editingTask
+            ? {
+                title: editingTask.title,
+                description: editingTask.description ?? "",
+                assigneeId: editingTask.assignments[0]?.userId ?? "",
+                dueDate: editingTask.dueDate
+                  ? new Date(editingTask.dueDate).toISOString().split("T")[0]
+                  : "",
+                recurrence: editingTask.isRecurring
+                  ? ((editingTask.recurrencePattern as
+                      | "daily"
+                      | "weekly"
+                      | "biweekly"
+                      | "monthly") ?? "none")
+                  : "none",
+                priority:
+                  (editingTask.priority as "high" | "medium" | "low") ??
+                  "medium",
+                isRotating: editingTask.isRotating,
+              }
+            : undefined
+        }
         onClose={() => {
           if (!isEditingTask) {
             setEditingTask(null);
             setEditTaskError(null);
           }
         }}
-        onCreate={async () => {}}
-        onUpdate={handleUpdateTask}
-        onDelete={handleDeleteTask}
+        onSave={async (data: TaskFormData) => {
+          if (!editingTask) return;
+          try {
+            setIsEditingTask(true);
+            setEditTaskError(null);
+            await updateTaskApi(editingTask.householdId, editingTask.id, {
+              title: data.title,
+              description: data.description || null,
+              dueDate: data.dueDate || null,
+              priority: data.priority,
+              isRecurring: data.recurrence !== "none",
+              recurrencePattern:
+                data.recurrence !== "none"
+                  ? (data.recurrence as "daily" | "weekly" | "monthly")
+                  : undefined,
+              isRotating: data.isRotating,
+            });
+            setEditingTask(null);
+            await fetchAllTasks();
+          } catch {
+            setEditTaskError("Failed to update task. Please try again.");
+          } finally {
+            setIsEditingTask(false);
+          }
+        }}
+        onRequestDelete={handleRequestDelete}
+      />
+
+      {/* Delete Task Modal */}
+      <TaskDeleteModal
+        open={isDeleteOpen}
+        task={deleteTarget}
+        isDeleting={isDeleting}
+        onClose={closeDelete}
+        onConfirm={confirmDeleteTask}
       />
 
       {/* Edit Profile Modal */}

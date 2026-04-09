@@ -1,7 +1,7 @@
 import type { UserSummary } from './households';
 
 export type TaskStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'SKIPPED';
-export type RecurrencePattern = 'daily' | 'weekly' | 'monthly';
+export type RecurrencePattern = 'daily' | 'weekly' | 'biweekly' | 'monthly';
 export type TaskPriority = 'low' | 'medium' | 'high';
 
 export interface TaskAssignment {

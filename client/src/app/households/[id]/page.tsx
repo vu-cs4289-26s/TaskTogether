@@ -15,7 +15,9 @@ import type { Household } from "@/types/households";
 import Avatar from "@/components/ui/Avatar";
 import type { Task, CreateTaskInput, UpdateTaskInput } from "@/types/tasks";
 import { isTaskCompleted } from "@/lib/task-helpers";
-import AddTaskModal from "@/components/households/AddTaskModal";
+import TaskModal, { type TaskFormData } from "@/components/modals/TaskModal";
+import TaskDeleteModal from "@/components/tasks/TaskDeleteModal";
+import useDeleteFlow from "@/hooks/useDeleteFlow";
 import ManageMembersModal from "@/components/households/ManageMembersModal";
 import CompleteTaskModal from "@/components/modals/CompleteTaskModal";
 import TaskListPanel from "@/components/tasks/TaskListPanel";
@@ -235,6 +237,17 @@ export default function HouseholdDashboardPage() {
   // View completed task details modal
   const [viewingTask, setViewingTask] = useState<Task | null>(null);
 
+  // Delete flow hook
+  const {
+    isDeleteOpen,
+    deleteTarget,
+    isDeleting,
+    setIsDeleting,
+    openDelete,
+    closeDelete,
+    forceCloseDelete,
+  } = useDeleteFlow<Task>();
+
   /** ---------------- Calendar state ---------------- */
   const [calYear, setCalYear] = useState(() => new Date().getFullYear());
   const [calMonth, setCalMonth] = useState(() => new Date().getMonth()); // 0-indexed
@@ -377,6 +390,11 @@ export default function HouseholdDashboardPage() {
     [household],
   );
 
+  const memberOptions = useMemo(
+    () => members.map((m) => ({ id: m.user.id, name: m.user.name })),
+    [members],
+  );
+
   const memberCount = members.length;
   const name = household?.name?.trim() || "Untitled household";
   const isAdmin = household?.myRole === "ADMIN";
@@ -384,13 +402,22 @@ export default function HouseholdDashboardPage() {
   const activeTasks = useMemo(() => tasks.filter((t) => !isTaskCompleted(t)), [tasks]);
   const completedTasks = useMemo(() => tasks.filter((t) => isTaskCompleted(t)), [tasks]);
 
-  /** --------------------- task handlers --------------------- */
-  async function handleCreateTask(input: CreateTaskInput) {
+/** --------------------- task handlers --------------------- */
+async function handleCreateTask(input: TaskFormData) {
     if (!id) return;
     try {
       setIsCreatingTask(true);
       setCreateTaskError(null);
-      const created = await createTaskApi(id, input);
+      const created = await createTaskApi(id, {
+        title: input.title,
+        description: input.description || undefined,
+        dueDate: input.dueDate || undefined,
+        priority: input.priority,
+        isRecurring: input.recurrence !== "none",
+        recurrencePattern: input.recurrence !== "none" ? input.recurrence : undefined,
+        isRotating: input.isRotating,
+        assignedToUserId: input.assigneeId,
+      });
       setTasks((prev) => [created, ...prev]);
       setIsAddTaskOpen(false);
     } catch {
@@ -418,12 +445,20 @@ export default function HouseholdDashboardPage() {
     }
   }
 
-  async function handleUpdateTask(input: UpdateTaskInput) {
+  async function handleUpdateTask(input: TaskFormData) {
     if (!id || !editingTask) return;
     try {
       setIsEditingTask(true);
       setEditTaskError(null);
-      await updateTaskApi(id, editingTask.id, input);
+      await updateTaskApi(id, editingTask.id, {
+        title: input.title,
+        description: input.description || null,
+        dueDate: input.dueDate || null,
+        priority: input.priority,
+        isRecurring: input.recurrence !== "none",
+        recurrencePattern: input.recurrence !== "none" ? input.recurrence : undefined,
+        isRotating: input.isRotating,
+      });
       setEditingTask(null);
       await fetchTasks();
     } catch {
@@ -433,18 +468,24 @@ export default function HouseholdDashboardPage() {
     }
   }
 
-  async function handleDeleteTask() {
-    if (!id || !editingTask) return;
+  function handleRequestDelete() {
+    if (!editingTask) return;
+    setEditingTask(null);
+    openDelete(editingTask);
+  }
+
+  async function confirmDeleteTask(taskId: string) {
+    if (!id || !deleteTarget) return;
     try {
-      setIsEditingTask(true);
-      setEditTaskError(null);
-      await deleteTaskApi(id, editingTask.id);
-      setEditingTask(null);
+      setIsDeleting(true);
+      await deleteTaskApi(id, taskId);
+      setTasks((prev) => prev.filter((t) => t.id !== taskId));
+      forceCloseDelete();
       await fetchTasks();
     } catch {
-      setEditTaskError("Failed to delete task. Please try again.");
+      // Error shown in modal
     } finally {
-      setIsEditingTask(false);
+      setIsDeleting(false);
     }
   }
 
@@ -760,7 +801,7 @@ export default function HouseholdDashboardPage() {
                 type="button"
               >
                 <Plus className="w-4 h-4" />
-                Add Chore
+                Add Task
               </button>
             </>
           }
@@ -897,11 +938,12 @@ export default function HouseholdDashboardPage() {
       </div>
 
       {/* Modals */}
-      <AddTaskModal
+      <TaskModal
         open={isAddTaskOpen}
+        mode="create"
         isSubmitting={isCreatingTask}
         error={createTaskError}
-        members={members}
+        members={memberOptions}
         isAdmin={isAdmin}
         currentUserId={user?.id}
         onClose={() => {
@@ -910,7 +952,7 @@ export default function HouseholdDashboardPage() {
             setCreateTaskError(null);
           }
         }}
-        onCreate={handleCreateTask}
+        onSave={handleCreateTask}
       />
 
       <CompleteTaskModal
@@ -927,23 +969,54 @@ export default function HouseholdDashboardPage() {
         onComplete={handleCompleteTask}
       />
 
-      <AddTaskModal
+      <TaskModal
         open={!!editingTask}
+        mode="edit"
         isSubmitting={isEditingTask}
         error={editTaskError}
-        members={members}
+        members={memberOptions}
         isAdmin={isAdmin}
         currentUserId={user?.id}
-        editingTask={editingTask}
+        initialValue={
+          editingTask
+            ? {
+                title: editingTask.title,
+                description: editingTask.description ?? "",
+                assigneeId: editingTask.assignments[0]?.userId ?? "",
+                dueDate: editingTask.dueDate
+                  ? new Date(editingTask.dueDate).toISOString().split("T")[0]
+                  : "",
+                recurrence: editingTask.isRecurring
+                  ? ((editingTask.recurrencePattern as
+                      | "daily"
+                      | "weekly"
+                      | "biweekly"
+                      | "monthly") ?? "none")
+                  : "none",
+                priority:
+                  (editingTask.priority as "high" | "medium" | "low") ??
+                  "medium",
+                isRotating: editingTask.isRotating,
+              }
+            : undefined
+        }
         onClose={() => {
           if (!isEditingTask) {
             setEditingTask(null);
             setEditTaskError(null);
           }
         }}
-        onCreate={handleCreateTask}
-        onUpdate={handleUpdateTask}
-        onDelete={handleDeleteTask}
+        onSave={handleUpdateTask}
+        onRequestDelete={handleRequestDelete}
+      />
+
+      {/* Delete Task Modal */}
+      <TaskDeleteModal
+        open={isDeleteOpen}
+        task={deleteTarget}
+        isDeleting={isDeleting}
+        onClose={closeDelete}
+        onConfirm={confirmDeleteTask}
       />
 
       <ManageMembersModal
