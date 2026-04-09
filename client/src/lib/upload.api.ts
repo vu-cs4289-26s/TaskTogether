@@ -17,7 +17,7 @@ export async function uploadImageApi(file: File): Promise<string> {
 
   if (!res.ok) {
     const body = await res.json().catch(() => null);
-    throw new Error(body?.error?.message || 'Image upload failed');
+    throw new Error(body?.error?.message || 'Image upload failed. Try an image with smaller file size or different format.');
   }
 
   const json = await res.json();

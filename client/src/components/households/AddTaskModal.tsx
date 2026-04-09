@@ -11,6 +11,8 @@ type Props = {
   isSubmitting: boolean;
   error: string | null;
   members: HouseholdMember[];
+  isAdmin?: boolean;
+  currentUserId?: string;
   onClose: () => void;
   onCreate: (input: CreateTaskInput) => void | Promise<void>;
   /** If provided, modal opens in edit mode */
@@ -30,6 +32,8 @@ export default function AddTaskModal({
   isSubmitting,
   error,
   members,
+  isAdmin = false,
+  currentUserId,
   onClose,
   onCreate,
   editingTask,
@@ -234,32 +238,45 @@ export default function AddTaskModal({
             </div>
           </div>
 
-          {/* Assign To (only in create mode) */}
-          {!isEditMode && (
-            <div className="flex flex-col gap-1">
-              <label
-                htmlFor="task-assignee"
-                className="text-sm font-medium text-sage flex items-center gap-2"
-              >
-                <span className="inline-block w-1 h-3.5 rounded-sm bg-terracotta" />
-                Assign To
-              </label>
-              <select
-                id="task-assignee"
-                value={assignedToUserId}
-                onChange={(e) => setAssignedToUserId(e.target.value)}
-                disabled={isSubmitting}
-                className="px-4 py-3 rounded-sm border border-divider bg-surface text-text-primary transition focus:outline-none focus:border-sage focus:ring-4 focus:ring-sage/10"
-              >
-                <option value="">Unassigned</option>
-                {members.map((m) => (
-                  <option key={m.user.id} value={m.user.id}>
-                    {m.user.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+      {/* Assign To (only in create mode) */}
+      {!isEditMode && (
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor="task-assignee"
+            className="text-sm font-medium text-sage flex items-center gap-2"
+          >
+            <span className="inline-block w-1 h-3.5 rounded-sm bg-terracotta" />
+            Assign To
+          </label>
+          {!isAdmin && (
+            <p className="text-xs text-text-secondary">
+              Only admins can assign tasks to other members
+            </p>
           )}
+          <select
+            id="task-assignee"
+            value={assignedToUserId}
+            onChange={(e) => setAssignedToUserId(e.target.value)}
+            disabled={isSubmitting}
+            className="px-4 py-3 rounded-sm border border-divider bg-surface text-text-primary transition focus:outline-none focus:border-sage focus:ring-4 focus:ring-sage/10"
+          >
+            <option value="">Unassigned</option>
+            {isAdmin ? (
+              // Admin: show all members
+              members.map((m) => (
+                <option key={m.user.id} value={m.user.id}>
+                  {m.user.name}
+                </option>
+              ))
+            ) : (
+              // Non-admin: only show self
+              currentUserId && (
+                <option value={currentUserId}>Me</option>
+              )
+            )}
+          </select>
+        </div>
+      )}
 
           {/* Recurring */}
           <div className="flex flex-col gap-2">

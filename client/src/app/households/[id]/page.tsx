@@ -902,6 +902,8 @@ export default function HouseholdDashboardPage() {
         isSubmitting={isCreatingTask}
         error={createTaskError}
         members={members}
+        isAdmin={isAdmin}
+        currentUserId={user?.id}
         onClose={() => {
           if (!isCreatingTask) {
             setIsAddTaskOpen(false);
@@ -930,6 +932,8 @@ export default function HouseholdDashboardPage() {
         isSubmitting={isEditingTask}
         error={editTaskError}
         members={members}
+        isAdmin={isAdmin}
+        currentUserId={user?.id}
         editingTask={editingTask}
         onClose={() => {
           if (!isEditingTask) {

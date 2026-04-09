@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { Issue, IssueStatus } from '@/types/issues';
+import Avatar from '@/components/ui/Avatar';
 
 interface IssueDetailPanelProps {
     issue: Issue;
@@ -94,9 +95,13 @@ export default function IssueDetailPanel({
                         {commentsSorted.map((c) => (
                             <div key={c.id} className="bg-surface rounded-md border border-divider p-3">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-9 h-9 rounded-full bg-sage text-white flex items-center justify-center text-xs font-semibold shrink-0">
-                                        {initials(c.user?.name)}
-                                    </div>
+                                    <Avatar
+                                        src={c.user?.avatar ?? undefined}
+                                        name={c.user?.name ?? 'Unknown'}
+                                        size="sm"
+                                        userKey={c.user.id}
+                                        className=''
+                                    />
                                     <div className="min-w-0">
                                         <div className="text-sm font-semibold text-text-primary truncate">
                                             {c.user?.name ?? 'Unknown'}

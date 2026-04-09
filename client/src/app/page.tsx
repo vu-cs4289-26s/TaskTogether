@@ -86,7 +86,7 @@ function LandingPageContent() {
     } catch (err: unknown) {
       const error = err as { response?: { data?: { error?: { message?: string } } } };
       setAuthError(
-        error.response?.data?.error?.message || 'Login failed. Please try again.'
+        error.response?.data?.error?.message || 'Login failed. Please try again or try registering.'
       );
     } finally {
       setAuthLoading(false);
@@ -142,7 +142,7 @@ function LandingPageContent() {
       const error = err as { response?: { data?: { error?: { message?: string } } } };
       setAuthError(
         error.response?.data?.error?.message ||
-        'Registration failed. Please try again.'
+        'Registration failed. Please try again or try a different email.'
       );
     } finally {
       setAuthLoading(false);

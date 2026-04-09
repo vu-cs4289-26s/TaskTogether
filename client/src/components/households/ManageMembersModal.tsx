@@ -1,9 +1,21 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import type { HouseholdMember } from '@/types/households';
 import Avatar from '@/components/ui/Avatar';
-import { createInviteApi, getActiveInviteApi, expireInviteApi, removeMemberApi, promoteMemberApi, sendEmailInviteApi } from '@/lib/households.api';
+import { 
+  createInviteApi, 
+  getActiveInviteApi, 
+  expireInviteApi, 
+  removeMemberApi, 
+  promoteMemberApi, 
+  sendEmailInviteApi,
+  getDeleteVoteStatusApi,
+  castDeleteVoteApi,
+  retractDeleteVoteApi,
+  type DeleteVoteStatus,
+} from '@/lib/households.api';
 
 type Props = {
   open: boolean;
@@ -24,6 +36,7 @@ export default function ManageMembersModal({
   onClose,
   onMembersChanged,
 }: Props) {
+  const router = useRouter();
   const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [inviteExpiresAt, setInviteExpiresAt] = useState<string | null>(null);
   const [inviteLoading, setInviteLoading] = useState(false);
@@ -40,7 +53,12 @@ export default function ManageMembersModal({
 
   const isAdmin = myRole === 'ADMIN';
 
-  // Fetch active invite when modal opens
+  // Delete vote states
+  const [deleteVoteStatus, setDeleteVoteStatus] = useState<DeleteVoteStatus | null>(null);
+  const [deleteVoteLoading, setDeleteVoteLoading] = useState(false);
+  const [showDeleteVoteConfirm, setShowDeleteVoteConfirm] = useState(false);
+
+  // Fetch active invite and delete vote status when modal opens
   useEffect(() => {
     if (!open || !isAdmin) return;
 
@@ -48,13 +66,17 @@ export default function ManageMembersModal({
     (async () => {
       try {
         setInviteFetching(true);
-        const active = await getActiveInviteApi(householdId);
+        const [active, voteStatus] = await Promise.all([
+          getActiveInviteApi(householdId),
+          getDeleteVoteStatusApi(householdId),
+        ]);
         if (!cancelled) {
           setInviteCode(active?.code ?? null);
           setInviteExpiresAt(active?.expiresAt ?? null);
+          setDeleteVoteStatus(voteStatus);
         }
       } catch {
-        // Non-critical, just don't show an invite
+        // Non-critical, just don't show data
       } finally {
         if (!cancelled) setInviteFetching(false);
       }
@@ -135,6 +157,8 @@ export default function ManageMembersModal({
       await removeMemberApi(householdId, currentUserId);
       onMembersChanged();
       onClose();
+      // Redirect to households list after leaving
+      router.push('/households');
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: { message?: string } } } };
       setError(e.response?.data?.error?.message || 'Failed to leave household.');
@@ -153,7 +177,7 @@ export default function ManageMembersModal({
   async function handleSendEmailInvite() {
     setEmailError(null);
     setEmailSent(false);
-    
+
     if (!emailToInvite || !emailToInvite.includes('@')) {
       setEmailError('Please enter a valid email address.');
       return;
@@ -180,6 +204,46 @@ export default function ManageMembersModal({
     if (diffDays <= 0) return 'Expired';
     if (diffDays === 1) return 'Expires in 1 day';
     return `Expires in ${diffDays} days`;
+  }
+
+  // Delete vote handlers
+  async function handleCastDeleteVote() {
+    try {
+      setDeleteVoteLoading(true);
+      setError(null);
+      const result = await castDeleteVoteApi(householdId);
+      if (result.deleted) {
+        // Household was deleted - redirect
+        onClose();
+        router.push('/households');
+        return;
+      }
+      // Refresh vote status
+      const status = await getDeleteVoteStatusApi(householdId);
+      setDeleteVoteStatus(status);
+      setShowDeleteVoteConfirm(false);
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: { message?: string } } } };
+      setError(e.response?.data?.error?.message || 'Failed to cast delete vote.');
+    } finally {
+      setDeleteVoteLoading(false);
+    }
+  }
+
+  async function handleRetractDeleteVote() {
+    try {
+      setDeleteVoteLoading(true);
+      setError(null);
+      await retractDeleteVoteApi(householdId);
+      // Refresh vote status
+      const status = await getDeleteVoteStatusApi(householdId);
+      setDeleteVoteStatus(status);
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: { message?: string } } } };
+      setError(e.response?.data?.error?.message || 'Failed to retract delete vote.');
+    } finally {
+      setDeleteVoteLoading(false);
+    }
   }
 
   return (
@@ -212,16 +276,16 @@ export default function ManageMembersModal({
             const isLoading = actionLoading === m.user.id;
 
             return (
-            <div
-              key={m.id}
-              className="flex items-center gap-3 p-3 rounded-sm border border-divider"
-            >
-              <Avatar
-                src={m.user.avatar}
-                name={m.user.name}
-                userKey={m.user.id}
-                size="md"
-              />
+              <div
+                key={m.id}
+                className="flex items-center gap-3 p-3 rounded-sm border border-divider"
+              >
+                <Avatar
+                  src={m.user.avatar}
+                  name={m.user.name}
+                  userKey={m.user.id}
+                  size="md"
+                />
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
@@ -306,75 +370,171 @@ export default function ManageMembersModal({
                 </div>
               </div>
             ) : (
-            <button
-              type="button"
-              onClick={handleGenerateInvite}
-              disabled={inviteLoading}
-              className="px-5 py-2.5 rounded-sm bg-sage text-white font-medium flex items-center gap-2 transition-all hover:bg-sage-hover hover:-translate-y-px disabled:opacity-60"
-            >
-              {inviteLoading ? 'Generating...' : 'Generate Invite Code'}
-            </button>
-          )}
-
-          {/* Email Invite Section */}
-          <div className="mt-4 pt-4 border-t border-divider">
-            <div className="text-sm font-medium text-text-secondary mb-2">Or invite by email:</div>
-            <div className="flex items-center gap-2">
-              <input
-                type="email"
-                value={emailToInvite}
-                onChange={(e) => setEmailToInvite(e.target.value)}
-                placeholder="email@example.com"
-                disabled={emailSending}
-                className="flex-1 px-3 py-2 rounded-sm border border-divider bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-sage/30 focus:border-sage transition disabled:opacity-60"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    handleSendEmailInvite();
-                  }
-                }}
-              />
               <button
                 type="button"
-                onClick={handleSendEmailInvite}
-                disabled={emailSending || !emailToInvite}
-                className="px-4 py-2 rounded-sm bg-sage text-white font-medium text-sm transition hover:bg-sage-hover disabled:opacity-60 disabled:cursor-not-allowed"
+                onClick={handleGenerateInvite}
+                disabled={inviteLoading}
+                className="px-5 py-2.5 rounded-sm bg-sage text-white font-medium flex items-center gap-2 transition-all hover:bg-sage-hover hover:-translate-y-px disabled:opacity-60"
               >
-                {emailSending ? 'Sending...' : 'Send Invite'}
+                {inviteLoading ? 'Generating...' : 'Generate Invite Code'}
               </button>
-            </div>
-            {emailSent && (
-              <div className="mt-2 text-sm text-sage">Invite email sent successfully!</div>
             )}
-            {emailError && (
-              <div className="mt-2 text-sm text-red-600">{emailError}</div>
-            )}
+
+            {/* Email Invite Section */}
+            <div className="mt-4 pt-4 border-t border-divider">
+              <div className="text-sm font-medium text-text-secondary mb-2">Or invite by email:</div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="email"
+                  value={emailToInvite}
+                  onChange={(e) => setEmailToInvite(e.target.value)}
+                  placeholder="email@example.com"
+                  disabled={emailSending}
+                  className="flex-1 px-3 py-2 rounded-sm border border-divider bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-sage/30 focus:border-sage transition disabled:opacity-60"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleSendEmailInvite();
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={handleSendEmailInvite}
+                  disabled={emailSending || !emailToInvite}
+                  className="px-4 py-2 rounded-sm bg-sage text-white font-medium text-sm transition hover:bg-sage-hover disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {emailSending ? 'Sending...' : 'Send Invite'}
+                </button>
+              </div>
+        {emailSent && (
+          <div className="mt-2 text-sm text-sage">Invite email sent successfully!</div>
+        )}
+        {emailError && (
+          <div className="mt-2 text-sm text-red-600">{emailError}</div>
+        )}
+      </div>
+    </div>
+  )}
+
+  {/* Delete Household Voting Section (Admin only) */}
+  {isAdmin && deleteVoteStatus && (
+    <div className="mb-6 p-4 rounded-sm border-l-4 border-urgent bg-urgent/5">
+      <div className="text-base font-heading font-semibold text-urgent mb-2">
+        Delete Household
+      </div>
+      <p className="text-sm text-text-secondary mb-3">
+        All admins must vote to delete this household. This action cannot be undone.
+      </p>
+
+      {/* Vote progress */}
+      <div className="mb-4">
+        <div className="flex items-center justify-between text-sm mb-1">
+          <span className="text-text-secondary">
+            Votes: {deleteVoteStatus.votesReceived} of {deleteVoteStatus.votesRequired} admins
+          </span>
+          <span className={deleteVoteStatus.myVote ? 'text-urgent font-medium' : 'text-text-secondary'}>
+            {deleteVoteStatus.myVote ? 'You voted to delete' : 'You have not voted'}
+          </span>
+        </div>
+        <div className="h-2 bg-divider rounded-full overflow-hidden">
+          <div
+            className="h-full bg-urgent transition-all"
+            style={{ width: `${deleteVoteStatus.votesRequired > 0 ? (deleteVoteStatus.votesReceived / deleteVoteStatus.votesRequired) * 100 : 0}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Voters list */}
+      {deleteVoteStatus.votes.length > 0 && (
+        <div className="mb-4">
+          <p className="text-xs text-text-secondary mb-1">Admins who voted to delete:</p>
+          <div className="flex flex-wrap gap-2">
+            {deleteVoteStatus.votes.map((vote) => {
+              const voter = members.find((m) => m.user.id === vote.voterId);
+              return (
+                <span key={vote.voterId} className="text-xs px-2 py-1 rounded-sm bg-urgent/10 text-urgent">
+                  {voter?.user.name ?? 'Unknown'}
+                </span>
+              );
+            })}
           </div>
         </div>
       )}
 
-        {error && (
-          <div className="mb-4 text-sm text-red-600">{error}</div>
-        )}
-
-        <div className="flex gap-4 justify-between">
-          <button
-            type="button"
-            onClick={handleLeave}
-            disabled={actionLoading === currentUserId}
-            className="px-5 py-2.5 rounded-sm border border-urgent text-urgent font-medium transition hover:bg-urgent/10 disabled:opacity-50"
-          >
-            Leave Household
-          </button>
-
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-6 py-3 rounded-sm border border-divider bg-transparent text-text-primary transition hover:bg-base"
-          >
-            Close
-          </button>
+      {/* Vote buttons */}
+      {!showDeleteVoteConfirm ? (
+        <div className="flex gap-3">
+          {!deleteVoteStatus.myVote ? (
+            <button
+              type="button"
+              onClick={() => setShowDeleteVoteConfirm(true)}
+              disabled={deleteVoteLoading}
+              className="px-4 py-2 rounded-sm border border-urgent text-urgent font-medium text-sm transition hover:bg-urgent/10 disabled:opacity-50"
+            >
+              Vote to Delete
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleRetractDeleteVote}
+              disabled={deleteVoteLoading}
+              className="px-4 py-2 rounded-sm border border-divider text-text-secondary font-medium text-sm transition hover:bg-soft-highlight disabled:opacity-50"
+            >
+              Retract Vote
+            </button>
+          )}
         </div>
-      </div>
+      ) : (
+        <div className="p-3 rounded-sm bg-urgent/10 border border-urgent/30">
+          <p className="text-sm text-text-primary mb-3">
+            Are you sure you want to vote to delete this household? All data including tasks, wiki, and activities will be permanently deleted once all admins vote.
+          </p>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={handleCastDeleteVote}
+              disabled={deleteVoteLoading}
+              className="px-4 py-2 rounded-sm bg-urgent text-white font-medium text-sm transition hover:bg-urgent-hover disabled:opacity-50"
+            >
+              {deleteVoteLoading ? 'Voting...' : 'Yes, Vote to Delete'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowDeleteVoteConfirm(false)}
+              disabled={deleteVoteLoading}
+              className="px-4 py-2 rounded-sm border border-divider text-text-secondary font-medium text-sm transition hover:bg-soft-highlight"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )}
+
+  {error && (
+    <div className="mb-4 text-sm text-red-600">{error}</div>
+  )}
+
+  <div className="flex gap-4 justify-between">
+    <button
+      type="button"
+      onClick={handleLeave}
+      disabled={actionLoading === currentUserId}
+      className="px-5 py-2.5 rounded-sm border border-urgent text-urgent font-medium transition hover:bg-urgent/10 disabled:opacity-50"
+    >
+      Leave Household
+    </button>
+
+    <button
+      type="button"
+      onClick={onClose}
+      className="px-6 py-3 rounded-sm border border-divider bg-transparent text-text-primary transition hover:bg-base"
+    >
+      Close
+    </button>
+  </div>
+</div>
     </div>
   );
 }
