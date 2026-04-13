@@ -25,7 +25,7 @@ export interface Issue {
   id: string;
   title: string;
   description: string | null;
-  photoUrl: string | null;
+  photoUrls: string[];
 
   status: IssueStatus;
   type: IssueType;
@@ -47,14 +47,14 @@ export interface CreateIssueInput {
   priority: IssuePriority;
 
   description?: string | null;  // optional
-  photoUrl?: string | null;
+  photoUrls?: string[];
   isAnonymous?: boolean;        // optional with default false server-side
 }
 
 export interface UpdateIssueInput {
   title?: string;
   description?: string | null;
-  photoUrl?: string | null;
+  photoUrls?: string[];
   status?: IssueStatus;
   type?: IssueType;
   priority?: IssuePriority;

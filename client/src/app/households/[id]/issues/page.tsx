@@ -88,12 +88,12 @@ export default function IssuesPage() {
     const currentUserId = user?.id ?? null;
     const isAdmin = household?.myRole === 'ADMIN';
 
-    //image upload
-    const {
-        previews, uploading, setUploading, uploadError, setUploadError,
-        addFiles, removePreview, clearPreviews,
-    } = useImageUpload(1);
-    const busy = uploading || isSubmitting;
+  //image upload (max 8 images)
+  const {
+    previews, uploading, setUploading, uploadError, setUploadError,
+    addFiles, removePreview, clearPreviews,
+  } = useImageUpload(8);
+  const busy = uploading || isSubmitting;
 
     const loadHouseholdData = useCallback(async () => {
         if (!householdId) {
@@ -268,92 +268,100 @@ export default function IssuesPage() {
         }
     }
 
-    async function handleCreate(values: ReportIssueFormValues) {
-        if (!householdId) return;
+  async function handleCreate(values: ReportIssueFormValues) {
+    if (!householdId) return;
 
+    try {
+      setIsSubmitting(true);
+      setSubmitError(null);
+      setUploadError(null);
+
+      let photoUrls: string[] = [];
+
+      if (previews.length > 0) {
         try {
-            setIsSubmitting(true);
-            setSubmitError(null);
-            setUploadError(null);
-
-            let photoUrl: string | null = null;
-
-            if (previews.length > 0) {
-                try {
-                    setUploading(true);
-                    photoUrl = await uploadImageApi(previews[0].file);
-                } catch (err) {
-                    setUploadError(
-                        err instanceof Error ? err.message : 'Image upload failed'
-                    );
-                    return;
-                } finally {
-                    setUploading(false);
-                }
-            }
-
-            const created = await createIssueApi(householdId, {
-                title: values.title,
-                type: values.type,
-                priority: values.priority,
-                description: values.description,
-                anonymous: values.anonymous,
-                photoUrl,
-            });
-
-            setIssues((prev) => [created, ...prev]);
-            setIsReportOpen(false);
-            clearPreviews();
-        } catch (e) {
-            setSubmitError(e instanceof Error ? e.message : 'Failed to create issue.');
+          setUploading(true);
+          photoUrls = await Promise.all(
+            previews.map((preview) => uploadImageApi(preview.file))
+          );
+        } catch (err) {
+          setUploadError(
+            err instanceof Error ? err.message : 'One or more image uploads failed'
+          );
+          return;
         } finally {
-            setIsSubmitting(false);
+          setUploading(false);
         }
+      }
+
+      const created = await createIssueApi(householdId, {
+        title: values.title,
+        type: values.type,
+        priority: values.priority,
+        description: values.description,
+        anonymous: values.anonymous,
+        photoUrls,
+      });
+
+      setIssues((prev) => [created, ...prev]);
+      setIsReportOpen(false);
+      clearPreviews();
+    } catch (e) {
+      setSubmitError(e instanceof Error ? e.message : 'Failed to create issue.');
+    } finally {
+      setIsSubmitting(false);
     }
+  }
 
-    async function handleEditSubmit(values: ReportIssueFormValues) {
-        if (!householdId || !editTarget) return;
+  async function handleEditSubmit(values: ReportIssueFormValues) {
+    if (!householdId || !editTarget) return;
 
+    try {
+      setIsSubmitting(true);
+      setSubmitError(null);
+      setUploadError(null);
+
+      // Start with existing photos that weren't removed (from form values)
+      let photoUrls: string[] = values.photoUrls ?? editTarget.photoUrls ?? [];
+
+      // Upload any new photos
+      if (previews.length > 0) {
         try {
-            setIsSubmitting(true);
-            setSubmitError(null);
-            setUploadError(null);
-
-            let photoUrl: string | null = values.photoUrl ?? editTarget.photoUrl ?? null;
-
-            if (previews.length > 0) {
-                try {
-                    setUploading(true);
-                    photoUrl = await uploadImageApi(previews[0].file);
-                } catch (err) {
-                    setUploadError(
-                        err instanceof Error ? err.message : 'Image upload failed'
-                    );
-                    return;
-                } finally {
-                    setUploading(false);
-                }
-            }
-
-            const payload = {
-                ...toUpdateIssueInput(values),
-                photoUrl,
-            };
-
-            const updated = await updateIssueApi(householdId, editTarget.id, payload);
-
-            setIssues((prev) => prev.map((issue) => (issue.id === updated.id ? updated : issue)));
-            setSelectedIssue(updated);
-            setEditTarget(updated);
-            setIsEditOpen(false);
-            clearPreviews();
-            setSubmitError(null);
-        } catch (e) {
-            setSubmitError(e instanceof Error ? e.message : 'Failed to update issue.');
+          setUploading(true);
+          const newUrls = await Promise.all(
+            previews.map((preview) => uploadImageApi(preview.file))
+          );
+          // Combine existing photos with newly uploaded ones
+          photoUrls = [...photoUrls, ...newUrls];
+        } catch (err) {
+          setUploadError(
+            err instanceof Error ? err.message : 'One or more image uploads failed'
+          );
+          return;
         } finally {
-            setIsSubmitting(false);
+          setUploading(false);
         }
+      }
+
+      const payload = {
+        ...toUpdateIssueInput(values),
+        photoUrls,
+      };
+
+      const updated = await updateIssueApi(householdId, editTarget.id, payload);
+
+      setIssues((prev) => prev.map((issue) => (issue.id === updated.id ? updated : issue)));
+      setSelectedIssue(updated);
+      setEditTarget(updated);
+      setIsEditOpen(false);
+      clearPreviews();
+      setSubmitError(null);
+    } catch (e) {
+      setSubmitError(e instanceof Error ? e.message : 'Failed to update issue.');
+    } finally {
+      setIsSubmitting(false);
     }
+  }
 
     // for comments
     async function handleAddComment(issueId: string, content: string) {

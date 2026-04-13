@@ -44,14 +44,14 @@ export function dbPriorityToUi(p: IssuePriority): ReportIssueFormValues['priorit
 }
 
 export function issueToForm(issue: Issue): ReportIssueFormValues {
-    return {
-        title: issue.title ?? '',
-        type: dbTypeToUi(issue.type),
-        priority: dbPriorityToUi(issue.priority),
-        description: issue.description ?? '',
-        anonymous: Boolean(issue.isAnonymous),
-        photoUrl: issue.photoUrl ?? null,
-    };
+  return {
+    title: issue.title ?? '',
+    type: dbTypeToUi(issue.type),
+    priority: dbPriorityToUi(issue.priority),
+    description: issue.description ?? '',
+    anonymous: Boolean(issue.isAnonymous),
+    photoUrls: issue.photoUrls ?? [],
+  };
 }
 
 export function toUpdateIssueInput(values: ReportIssueFormValues): UpdateIssueInput {
