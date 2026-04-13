@@ -10,12 +10,12 @@ export type IssueType = 'maintenance' | 'conflict' | 'noise' | 'cleanliness' | '
 export type IssuePriority = 'urgent' | 'medium' | 'low';
 
 export type ReportIssueFormValues = {
-    title: string;
-    type: IssueType;
-    priority: IssuePriority;
-    description?: string;
-    anonymous: boolean;
-    photoUrl?: string | null;
+  title: string;
+  type: IssueType;
+  priority: IssuePriority;
+  description?: string;
+  anonymous: boolean;
+  photoUrls?: string[];
 };
 
 type Preview = { id: string; url: string; file: File };
@@ -49,80 +49,77 @@ export default function ReportIssueModal({
     onClose,
     onSubmit,
 }: Props) {
-    const defaults = useMemo(
-        () => ({
-            title: initialValue?.title ?? '',
-            type: initialValue?.type ?? 'maintenance',
-            priority: initialValue?.priority ?? 'medium',
-            description: initialValue?.description ?? '',
-            anonymous: initialValue?.anonymous ?? false,
-            photoUrl: initialValue?.photoUrl ?? null,
-        }),
-        [initialValue]
-    );
+  const defaults = useMemo(
+    () => ({
+      title: initialValue?.title ?? '',
+      type: initialValue?.type ?? 'maintenance',
+      priority: initialValue?.priority ?? 'medium',
+      description: initialValue?.description ?? '',
+      anonymous: initialValue?.anonymous ?? false,
+      photoUrls: initialValue?.photoUrls ?? [],
+    }),
+    [initialValue]
+  );
 
-    const [title, setTitle] = useState(defaults.title);
-    const [type, setType] = useState<IssueType>(defaults.type);
-    const [priority, setPriority] = useState<IssuePriority>(defaults.priority);
-    const [description, setDescription] = useState(defaults.description);
-    const [anonymous, setAnonymous] = useState(defaults.anonymous);
-    const [localError, setLocalError] = useState<string | null>(null);
-    const [isDragOver, setIsDragOver] = useState(false);
-    const [removeExistingPhoto, setRemoveExistingPhoto] = useState(false);
+  const [title, setTitle] = useState(defaults.title);
+  const [type, setType] = useState<IssueType>(defaults.type);
+  const [priority, setPriority] = useState<IssuePriority>(defaults.priority);
+  const [description, setDescription] = useState(defaults.description);
+  const [anonymous, setAnonymous] = useState(defaults.anonymous);
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [removedPhotoUrls, setRemovedPhotoUrls] = useState<string[]>([]);
 
-    const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-    const busy = isSubmitting || uploading;
-    const existingPhotoUrl =
-        mode === 'edit' && !removeExistingPhoto
-            ? initialValue?.photoUrl ?? null
-            : null;
+  const busy = isSubmitting || uploading;
+  const existingPhotoUrls =
+    mode === 'edit'
+      ? (initialValue?.photoUrls ?? []).filter((url) => !removedPhotoUrls.includes(url))
+      : [];
 
-    useEffect(() => {
-        if (!open) return;
+  useEffect(() => {
+    if (!open) return;
 
-        if (mode === 'edit' && initialValue) {
-            setTitle(initialValue.title ?? '');
-            setType(initialValue.type ?? 'maintenance');
-            setPriority(initialValue.priority ?? 'medium');
-            setDescription(initialValue.description ?? '');
-            setAnonymous(initialValue.anonymous ?? false);
-        } else {
-            setTitle('');
-            setType('maintenance');
-            setPriority('medium');
-            setDescription('');
-            setAnonymous(false);
-        }
-
-        setLocalError(null);
-        setIsDragOver(false);
-        setRemoveExistingPhoto(false);
-    }, [open, mode, initialValue]);
-
-    function submit() {
-        const trimmedTitle = title.trim();
-        if (!trimmedTitle) {
-            setLocalError('Issue title is required.');
-            return;
-        }
-
-        setLocalError(null);
-
-        onSubmit({
-            title: trimmedTitle,
-            type,
-            priority,
-            description: description.trim() ? description.trim() : undefined,
-            anonymous,
-            photoUrl:
-                mode === 'edit'
-                    ? removeExistingPhoto
-                        ? null
-                        : initialValue?.photoUrl ?? null
-                    : null,
-        });
+    if (mode === 'edit' && initialValue) {
+      setTitle(initialValue.title ?? '');
+      setType(initialValue.type ?? 'maintenance');
+      setPriority(initialValue.priority ?? 'medium');
+      setDescription(initialValue.description ?? '');
+      setAnonymous(initialValue.anonymous ?? false);
+    } else {
+      setTitle('');
+      setType('maintenance');
+      setPriority('medium');
+      setDescription('');
+      setAnonymous(false);
     }
+
+    setLocalError(null);
+    setIsDragOver(false);
+    setRemovedPhotoUrls([]);
+  }, [open, mode, initialValue]);
+
+  function submit() {
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) {
+      setLocalError('Issue title is required.');
+      return;
+    }
+
+    setLocalError(null);
+
+    // For edit mode: combine existing photos that weren't removed with any new uploads handled by parent
+    // The parent will handle uploading new previews and merging with existingPhotoUrls
+    onSubmit({
+      title: trimmedTitle,
+      type,
+      priority,
+      description: description.trim() ? description.trim() : undefined,
+      anonymous,
+      photoUrls: mode === 'edit' ? existingPhotoUrls : undefined,
+    });
+  }
 
     return (
         <BaseModal
@@ -226,27 +223,25 @@ export default function ReportIssueModal({
                             setIsDragOver(true);
                         }}
                         onDragLeave={() => setIsDragOver(false)}
-                        onDrop={(e) => {
-                            e.preventDefault();
-                            if (busy) return;
-                            setIsDragOver(false);
-                            if (e.dataTransfer.files && onAddFiles) {
-                                setRemoveExistingPhoto(false);
-                                onAddFiles(e.dataTransfer.files);
-                            }
-                        }}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (busy) return;
+              setIsDragOver(false);
+              if (e.dataTransfer.files && onAddFiles) {
+                onAddFiles(e.dataTransfer.files);
+              }
+            }}
                     >
                         <input
                             ref={fileInputRef}
                             type="file"
                             accept="image/*"
                             className="hidden"
-                            onChange={(e) => {
-                                if (!e.target.files || !onAddFiles) return;
-                                setRemoveExistingPhoto(false);
-                                onAddFiles(e.target.files);
-                                e.currentTarget.value = '';
-                            }}
+            onChange={(e) => {
+              if (!e.target.files || !onAddFiles) return;
+              onAddFiles(e.target.files);
+              e.currentTarget.value = '';
+            }}
                             disabled={busy}
                         />
 
@@ -265,36 +260,44 @@ export default function ReportIssueModal({
                             </svg>
                         </div>
 
-                        <div className="text-sm font-semibold text-sage">
-                            {mode === 'edit' ? 'Click to replace or drag & drop' : 'Click to upload or drag & drop'}
-                        </div>
-                        <div className="text-xs text-text-secondary mt-1">
-                            PNG, JPG, HEIC up to 10MB
-                        </div>
+            <div className="text-sm font-semibold text-sage">
+              {mode === 'edit' ? 'Click to add or drag & drop' : 'Click to upload or drag & drop'}
+            </div>
+            <div className="text-xs text-text-secondary mt-1">
+              PNG, JPG, HEIC up to 10MB each (max 8 photos)
+            </div>
                     </div>
 
-                    {mode === 'edit' && existingPhotoUrl && previews.length === 0 && (
-                        <div className="flex flex-col gap-2">
-                            <div className="text-xs text-text-secondary">Current photo</div>
-
-                            <div className="relative w-[96px] h-[96px] rounded-sm overflow-hidden border border-divider bg-surface">
-                                <img
-                                    src={existingPhotoUrl}
-                                    alt="Current issue photo"
-                                    className="w-full h-full object-cover"
-                                />
-                                <button
-                                    type="button"
-                                    onClick={() => setRemoveExistingPhoto(true)}
-                                    className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 text-white text-[11px] flex items-center justify-center hover:bg-urgent"
-                                    aria-label="Remove current photo"
-                                    disabled={busy}
-                                >
-                                    ✕
-                                </button>
-                            </div>
-                        </div>
-                    )}
+      {mode === 'edit' && existingPhotoUrls.length > 0 && previews.length === 0 && (
+        <div className="flex flex-col gap-2">
+          <div className="text-xs text-text-secondary">
+            Current photos ({existingPhotoUrls.length})
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {existingPhotoUrls.map((url, idx) => (
+              <div
+                key={url}
+                className="relative w-[96px] h-[96px] rounded-sm overflow-hidden border border-divider bg-surface"
+              >
+                <img
+                  src={url}
+                  alt={`Current issue photo ${idx + 1}`}
+                  className="w-full h-full object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() => setRemovedPhotoUrls((prev) => [...prev, url])}
+                  className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 text-white text-[11px] flex items-center justify-center hover:bg-urgent"
+                  aria-label={`Remove photo ${idx + 1}`}
+                  disabled={busy}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
                     {/* {mode === 'edit' && previews.length > 0 && (
                         <div className="text-xs text-text-secondary">
@@ -302,27 +305,32 @@ export default function ReportIssueModal({
                         </div>
                     )} */}
 
-                    {previews.length > 0 && (
-                        <div className="flex flex-wrap gap-2">
-                            {previews.map((p) => (
-                                <div
-                                    key={p.id}
-                                    className="relative w-[72px] h-[72px] rounded-sm overflow-hidden border border-divider bg-surface"
-                                >
-                                    <img src={p.url} alt="preview" className="w-full h-full object-cover" />
-                                    <button
-                                        type="button"
-                                        onClick={() => onRemovePreview?.(p.id)}
-                                        className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 text-white text-[11px] flex items-center justify-center hover:bg-urgent"
-                                        aria-label="Remove photo"
-                                        disabled={busy}
-                                    >
-                                        ✕
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    )}
+      {previews.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <div className="text-xs text-text-secondary">
+            New photos ({previews.length})
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {previews.map((p) => (
+              <div
+                key={p.id}
+                className="relative w-[72px] h-[72px] rounded-sm overflow-hidden border border-divider bg-surface"
+              >
+                <img src={p.url} alt="preview" className="w-full h-full object-cover" />
+                <button
+                  type="button"
+                  onClick={() => onRemovePreview?.(p.id)}
+                  className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 text-white text-[11px] flex items-center justify-center hover:bg-urgent"
+                  aria-label="Remove photo"
+                  disabled={busy}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
                 </div>
 
                 <div className="flex items-center gap-2">

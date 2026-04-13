@@ -147,16 +147,26 @@ export default function IssueDetailPanel({
                 </div>
             </div>
 
-            {/* Photo display */}
-            {issue.photoUrl && (
-                <div className="mt-3">
-                    <img
-                        src={issue.photoUrl}
-                        alt="Issue photo"
-                        className="w-[120px] h-[120px] object-cover rounded-sm border border-divider"
-                    />
-                </div>
-            )}
+      {/* Photo display */}
+      {issue.photoUrls && issue.photoUrls.length > 0 && (
+        <div className="mt-3">
+          <div className="text-sm font-medium text-sage mb-2 flex items-center gap-2">
+            <span className="inline-block w-1 h-3.5 rounded-sm bg-terracotta" />
+            Photos ({issue.photoUrls.length})
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {issue.photoUrls.map((url, idx) => (
+              <a key={url} href={url} target="_blank" rel="noopener noreferrer">
+                <img
+                  src={url}
+                  alt={`Issue photo ${idx + 1}`}
+                  className="w-[120px] h-[120px] object-cover rounded-sm border border-divider hover:opacity-90 transition-opacity"
+                />
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
 
             {/* Admin status + actions */}
             {canEdit && (

@@ -20,11 +20,11 @@ const ISSUE_PRIORITIES = ['URGENT', 'MEDIUM', 'LOW'] as const;
 // TODO: Set householdId from req.householdId
 // TODO: Include reportedBy and comments in response
 router.post(
-    '/',
-    requireHouseholdMember,
-    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-        try {
-            const { title, description, photoUrl, type, priority, isAnonymous } = req.body;
+  '/',
+  requireHouseholdMember,
+  async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const { title, description, photoUrls, type, priority, isAnonymous } = req.body;
 
             const trimmedTitle = requireString(title);
             if (!trimmedTitle) {
@@ -42,11 +42,11 @@ router.post(
                 return;
             }
 
-            const issue = await prisma.issue.create({
-                data: {
-                    title: trimmedTitle,
-                    description: requireString(description) ?? null,
-                    photoUrl: photoUrl ?? null,
+      const issue = await prisma.issue.create({
+        data: {
+          title: trimmedTitle,
+          description: requireString(description) ?? null,
+          photoUrls: Array.isArray(photoUrls) ? photoUrls : [],
 
                     type,       // Prisma enum value
                     priority,   // Prisma enum value
@@ -168,34 +168,40 @@ router.put(
                 return;
             }
 
-            const {
-                title,
-                description,
-                photoUrl,
-                type,
-                priority,
-                isAnonymous,
-                status, // admin-only
-            } = req.body;
+    const {
+      title,
+      description,
+      photoUrls,
+      type,
+      priority,
+      isAnonymous,
+      status, // admin-only
+    } = req.body;
 
-            const data: any = {};
+    const data: any = {};
 
-            // Reporter OR Admin: allowed fields
-            if (title !== undefined) {
-                const trimmed = requireString(title);
-                if (!trimmed) {
-                    sendError(res, 400, 'VALIDATION_ERROR', 'Title cannot be empty');
-                    return;
-                }
-                data.title = trimmed;
-            }
-            if (description !== undefined) {
-                data.description = requireString(description) ?? null;
-            }
-            if (photoUrl === null || typeof photoUrl === 'string') data.photoUrl = photoUrl;
-            if (type) data.type = type;
-            if (priority) data.priority = priority;
-            if (typeof isAnonymous === 'boolean') data.isAnonymous = isAnonymous;
+    // Reporter OR Admin: allowed fields
+    if (title !== undefined) {
+      const trimmed = requireString(title);
+      if (!trimmed) {
+        sendError(res, 400, 'VALIDATION_ERROR', 'Title cannot be empty');
+        return;
+      }
+      data.title = trimmed;
+    }
+    if (description !== undefined) {
+      data.description = requireString(description) ?? null;
+    }
+    if (photoUrls !== undefined) {
+      if (photoUrls === null) {
+        data.photoUrls = [];
+      } else if (Array.isArray(photoUrls)) {
+        data.photoUrls = photoUrls.filter((url): url is string => typeof url === 'string');
+      }
+    }
+    if (type) data.type = type;
+    if (priority) data.priority = priority;
+    if (typeof isAnonymous === 'boolean') data.isAnonymous = isAnonymous;
 
             // Admin-only: status
             if (status !== undefined) {
@@ -394,34 +400,40 @@ router.put(
                 return;
             }
 
-            const {
-                title,
-                description,
-                photoUrl,
-                type,
-                priority,
-                isAnonymous,
-                status, // admin-only
-            } = req.body;
+    const {
+      title,
+      description,
+      photoUrls,
+      type,
+      priority,
+      isAnonymous,
+      status, // admin-only
+    } = req.body;
 
-            const data: any = {};
+    const data: any = {};
 
-            if (title !== undefined) {
-                const trimmed = requireString(title);
-                if (!trimmed) {
-                    sendError(res, 400, 'VALIDATION_ERROR', 'Title cannot be empty');
-                    return;
-                }
-                data.title = trimmed;
-            }
+    if (title !== undefined) {
+      const trimmed = requireString(title);
+      if (!trimmed) {
+        sendError(res, 400, 'VALIDATION_ERROR', 'Title cannot be empty');
+        return;
+      }
+      data.title = trimmed;
+    }
 
-            if (description !== undefined) {
-                data.description = requireString(description) ?? null;
-            }
+    if (description !== undefined) {
+      data.description = requireString(description) ?? null;
+    }
 
-            if (photoUrl === null || typeof photoUrl === 'string') data.photoUrl = photoUrl;
+    if (photoUrls !== undefined) {
+      if (photoUrls === null) {
+        data.photoUrls = [];
+      } else if (Array.isArray(photoUrls)) {
+        data.photoUrls = photoUrls.filter((url): url is string => typeof url === 'string');
+      }
+    }
 
-            if (type !== undefined) {
+    if (type !== undefined) {
                 if (!isOneOf(type, ISSUE_TYPES)) {
                     sendError(res, 400, 'VALIDATION_ERROR', 'Invalid issue type');
                     return;
