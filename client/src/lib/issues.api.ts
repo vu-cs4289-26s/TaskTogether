@@ -20,7 +20,7 @@ export type CreateIssueUiInput = {
     priority: UiIssuePriority;
     description?: string;
     anonymous?: boolean;
-    photoUrl?: string | null;
+    photoUrls?: string[];
 };
 
 //map ui to datasbase
@@ -44,7 +44,7 @@ function toCreateIssueInput(input: CreateIssueUiInput): CreateIssueInput {
         type: typeMap[input.type],
         priority: priorityMap[input.priority],
         description: input.description?.trim() ? input.description.trim() : null,
-        photoUrl: input.photoUrl ?? null,
+        photoUrls: input.photoUrls ?? [],
         isAnonymous: Boolean(input.anonymous),
     };
 }

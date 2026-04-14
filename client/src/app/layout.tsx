@@ -15,8 +15,8 @@ const poppins = Poppins({
 });
 
 export const metadata: Metadata = {
-  title: 'TaskTogether - Harmony at Home',
-  description: 'Coordinate chores, share calendars, and bring peace to your household.',
+  title: 'TaskTogether - A Web-based Household Management Platform for Modern Shared Living​',
+  description: 'Task together. Coordinate chores, share calendars, and bring peace to your household.',
 };
 
 export default function RootLayout({
