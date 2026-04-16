@@ -9,7 +9,7 @@ export default function Navbar({ onLoginClick, onRegisterClick }: NavbarProps) {
   return (
     <nav className="bg-surface shadow-sm sticky top-0 z-50">
       <div className="max-w-[1200px] mx-auto flex justify-between items-center px-4 py-3 sm:px-6 sm:py-4">
-        <div className="flex items-center gap-2 font-heading text-xl font-bold text-sage">
+        <div className="flex items-center gap-2 font-heading text-2xl sm:text-3xl font-bold text-sage">
           TaskTogether
         </div>
         <div className="flex gap-2 sm:gap-4">

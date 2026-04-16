@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import BaseModal from '@/components/modals/BaseModal';
+import LegalDocumentModal from '@/components/modals/LegalDocumentModal';
 import Button from '@/components/ui/Button';
 import Field, { inputClass } from '@/components/ui/Field';
 import { loadGoogleIdentityScript } from '@/lib/googleIdentity';
@@ -41,6 +42,7 @@ export default function AuthModal({
   const [password, setPassword] = useState('');
   const [twoFactorCode, setTwoFactorCode] = useState('');
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [openLegalDoc, setOpenLegalDoc] = useState<'terms' | 'privacy' | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const googleButtonRef = useRef<HTMLDivElement | null>(null);
   const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
@@ -169,6 +171,7 @@ export default function AuthModal({
     setPassword('');
     setTwoFactorCode('');
     setAgreedToTerms(false);
+    setOpenLegalDoc(null);
     setLocalError(null);
     onSwitchMode();
   }
@@ -280,11 +283,26 @@ export default function AuthModal({
                   disabled={loading}
                   className="mt-0.5 w-5 h-5 cursor-pointer disabled:cursor-not-allowed"
                 />
-                <label htmlFor="terms" className="cursor-pointer font-normal text-sm">
-                  I agree to the{' '}
-                  <span className="text-sage font-medium">Terms of Service</span> and{' '}
-                  <span className="text-sage font-medium">Privacy Policy</span>
-                </label>
+                <div className="font-normal text-sm">
+                  <label htmlFor="terms" className="cursor-pointer">
+                    I agree to the{' '}
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setOpenLegalDoc('terms')}
+                    className="text-sage font-medium hover:underline"
+                  >
+                    Terms of Service
+                  </button>
+                  <span>{' '}and{' '}</span>
+                  <button
+                    type="button"
+                    onClick={() => setOpenLegalDoc('privacy')}
+                    className="text-sage font-medium hover:underline"
+                  >
+                    Privacy Policy
+                  </button>
+                </div>
               </div>
             )}
           </>
@@ -303,24 +321,20 @@ export default function AuthModal({
 
       {!requiresTwoFactor && (
         <>
-          {googleClientId && (
-            <>
-              <div className="flex items-center gap-4 my-6">
-                <div className="flex-1 h-px bg-divider" />
-                <span className="text-text-secondary text-sm">
-                  {mode === 'login' ? 'or log in with' : 'or sign up with'}
-                </span>
-                <div className="flex-1 h-px bg-divider" />
-              </div>
+          <div className="flex items-center gap-4 my-6">
+            <div className="flex-1 h-px bg-divider" />
+            <span className="text-text-secondary text-sm">
+              {mode === 'login' ? 'or log in with' : 'or sign up with'}
+            </span>
+            <div className="flex-1 h-px bg-divider" />
+          </div>
 
-              <div className="flex flex-col gap-2">
-                <div
-                  ref={googleButtonRef}
-                  className="min-h-[44px] flex items-center justify-center"
-                />
-              </div>
-            </>
-          )}
+          <div className="flex flex-col gap-2">
+            <div
+              ref={googleButtonRef}
+              className="min-h-[44px] flex items-center justify-center"
+            />
+          </div>
 
           <div className="text-center mt-4">
             <span className="text-text-secondary">
@@ -337,6 +351,12 @@ export default function AuthModal({
           </div>
         </>
       )}
+
+      <LegalDocumentModal
+        open={openLegalDoc !== null}
+        documentType={openLegalDoc ?? 'terms'}
+        onClose={() => setOpenLegalDoc(null)}
+      />
     </BaseModal>
   );
 }
