@@ -9,7 +9,7 @@ export async function loadGoogleIdentityScript(): Promise<void> {
 
     if (existing) {
       existing.addEventListener('load', () => resolve(), { once: true });
-      existing.addEventListener('error', () => reject(new Error('Failed to load Google Identity Services.')), { once: true });
+      existing.addEventListener('error', () => reject(new Error('Google login could not load. Check your internet connection and refresh the page.')), { once: true });
       return;
     }
 
@@ -19,7 +19,7 @@ export async function loadGoogleIdentityScript(): Promise<void> {
     script.async = true;
     script.defer = true;
     script.onload = () => resolve();
-    script.onerror = () => reject(new Error('Failed to load Google Identity Services.'));
+    script.onerror = () => reject(new Error('Google login could not load. Check your internet connection and refresh the page.'));
     document.head.appendChild(script);
   });
 }

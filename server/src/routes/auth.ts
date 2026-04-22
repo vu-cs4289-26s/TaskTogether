@@ -63,16 +63,19 @@ function getResetPasswordBaseUrl(): string {
 
 function getPasswordValidationError(password: string): string | null {
   if (password.length < 8) {
-    return "Password must be at least 8 characters";
+    return "Password must be at least 8 characters long.";
   }
   if (!/[A-Z]/.test(password)) {
-    return "Password must include at least one uppercase letter";
+    return "Password must include at least one uppercase letter, like A.";
   }
   if (!/[a-z]/.test(password)) {
-    return "Password must include at least one lowercase letter";
+    return "Password must include at least one lowercase letter, like a.";
+  }
+  if (!/[^A-Za-z0-9]/.test(password)) {
+    return "Password must include at least one special character, like ! or #.";
   }
   if (!/[0-9]/.test(password)) {
-    return "Password must include at least one number";
+    return "Password must include at least one number, like 1.";
   }
   return null;
 }
@@ -96,7 +99,9 @@ async function verifyGoogleCredential(credential: string) {
   const clientId = process.env.GOOGLE_CLIENT_ID;
 
   if (!clientId) {
-    throw new Error("Google OAuth is not configured on the server.");
+    throw new Error(
+      "Google login is not configured on the server. Add GOOGLE_CLIENT_ID to the server environment and restart the backend.",
+    );
   }
 
   const response = await fetch(
@@ -104,7 +109,9 @@ async function verifyGoogleCredential(credential: string) {
   );
 
   if (!response.ok) {
-    throw new Error("Google token verification failed.");
+    throw new Error(
+      "Google could not verify this login. Try again, and make sure the Google client ID matches this app.",
+    );
   }
 
   const tokenInfo = (await response.json()) as GoogleTokenInfo;
@@ -124,7 +131,9 @@ async function verifyGoogleCredential(credential: string) {
     !validIssuer ||
     !validAudience
   ) {
-    throw new Error("Google account could not be verified.");
+    throw new Error(
+      "Google account verification failed. Use a verified Google account and try again.",
+    );
   }
 
   return {
@@ -205,7 +214,7 @@ async function issueAndSendTwoFactorCode(user: { id: string; email: string }) {
 
 async function getAuthenticatedUser(req: AuthenticatedRequest, res: Response) {
   if (!req.userId) {
-    sendError(res, 401, "AUTH_UNAUTHORIZED", "Unauthorized");
+    sendError(res, 401, "AUTH_UNAUTHORIZED", "Unauthorized.");
     return null;
   }
 
@@ -214,7 +223,7 @@ async function getAuthenticatedUser(req: AuthenticatedRequest, res: Response) {
   });
 
   if (!user) {
-    sendError(res, 404, "USER_NOT_FOUND", "User not found");
+    sendError(res, 404, "USER_NOT_FOUND", "User not found.");
     return null;
   }
 
@@ -242,12 +251,18 @@ router.post("/register", async (req: Request, res: Response): Promise<void> => {
   const normalizedEmail =
     typeof email === "string" ? normalizeEmail(email) : "";
 
-  if (!name || !normalizedEmail || !password) {
+  const missingFields = [
+    !name ? "full name" : null,
+    !normalizedEmail ? "email" : null,
+    !password ? "password" : null,
+  ].filter(Boolean);
+
+  if (missingFields.length > 0) {
     sendError(
       res,
       400,
       "VALIDATION_ERROR",
-      "Name, email, and password are required",
+      `Please enter your ${missingFields.join(", ")}.`,
     );
     return;
   }
@@ -257,7 +272,7 @@ router.post("/register", async (req: Request, res: Response): Promise<void> => {
       res,
       400,
       "VALIDATION_ERROR",
-      "Please enter a valid email address",
+      "Please enter a valid email address, like name@example.com.",
     );
     return;
   }
@@ -276,7 +291,7 @@ router.post("/register", async (req: Request, res: Response): Promise<void> => {
       res,
       409,
       "AUTH_EMAIL_EXISTS",
-      "An account with this email already exists",
+      "An account with this email already exists. Log in instead, or use Forgot password if you do not remember your password.",
     );
     return;
   }
@@ -305,7 +320,16 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
     typeof email === "string" ? normalizeEmail(email) : "";
 
   if (!normalizedEmail || !password) {
-    sendError(res, 400, "VALIDATION_ERROR", "Email and password are required");
+    sendError(
+      res,
+      400,
+      "VALIDATION_ERROR",
+      !normalizedEmail && !password
+        ? "Please enter your email and password."
+        : !normalizedEmail
+          ? "Please enter your email address."
+          : "Please enter your password.",
+    );
     return;
   }
 
@@ -317,7 +341,7 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
       res,
       401,
       "AUTH_INVALID_CREDENTIALS",
-      "Invalid email or password",
+      "Email or password is incorrect. Check both fields, or use Forgot password to reset your password.",
     );
     return;
   }
@@ -328,7 +352,7 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
       res,
       401,
       "AUTH_INVALID_CREDENTIALS",
-      "Invalid email or password",
+      "Email or password is incorrect. Check both fields, or use Forgot password to reset your password.",
     );
     return;
   }
@@ -338,7 +362,7 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
     sendSuccess(res, {
       requiresTwoFactor: true,
       userId: user.id,
-      message: "A verification code has been sent to your email",
+      message: "A verification code has been sent to your email.",
     });
     return;
   }
@@ -352,7 +376,7 @@ router.post("/google", async (req: Request, res: Response): Promise<void> => {
   const { credential } = req.body;
 
   if (!credential || typeof credential !== "string") {
-    sendError(res, 400, "VALIDATION_ERROR", "Google credential is required");
+    sendError(res, 400, "VALIDATION_ERROR", "Google credential is required.");
     return;
   }
 
@@ -376,7 +400,7 @@ router.post("/google", async (req: Request, res: Response): Promise<void> => {
         res,
         409,
         "AUTH_GOOGLE_ALREADY_LINKED",
-        "This Google account is already linked to another user.",
+        "This Google account is already linked to another TaskTogether account. Log in with that account or choose a different Google account.",
       );
       return;
     }
@@ -411,7 +435,7 @@ router.post("/google", async (req: Request, res: Response): Promise<void> => {
       sendSuccess(res, {
         requiresTwoFactor: true,
         userId: user.id,
-        message: "A verification code has been sent to your email",
+        message: "A verification code has been sent to your email.",
       });
       return;
     }
@@ -440,7 +464,7 @@ router.post(
     const { credential } = req.body;
 
     if (!credential || typeof credential !== "string") {
-      sendError(res, 400, "VALIDATION_ERROR", "Google credential is required");
+    sendError(res, 400, "VALIDATION_ERROR", "Google credential is required.");
       return;
     }
 
@@ -513,7 +537,7 @@ router.post(
         res,
         400,
         "VALIDATION_ERROR",
-        "User ID and verification code are required",
+        "User ID and verification code are required.",
       );
       return;
     }
@@ -523,7 +547,7 @@ router.post(
     });
 
     if (!user) {
-      sendError(res, 404, "USER_NOT_FOUND", "User not found");
+      sendError(res, 404, "USER_NOT_FOUND", "User not found.");
       return;
     }
 
@@ -532,7 +556,7 @@ router.post(
         res,
         400,
         "TWO_FACTOR_NOT_ENABLED",
-        "Two-factor authentication is not enabled for this account",
+        "Two-factor authentication is not enabled for this account. Log in again with email and password.",
       );
       return;
     }
@@ -542,7 +566,7 @@ router.post(
         res,
         400,
         "TWO_FACTOR_INVALID_OR_EXPIRED",
-        "Verification code is invalid or has expired",
+        "The verification code is incorrect or expired. Enter the newest 6-digit code from your email, or request a new code.",
       );
       return;
     }
@@ -574,13 +598,13 @@ router.post(
         res,
         400,
         "TWO_FACTOR_ALREADY_ENABLED",
-        "Two-factor authentication is already enabled",
+        "Two-factor authentication is already enabled for this account.",
       );
       return;
     }
 
     await issueAndSendTwoFactorCode(user);
-    sendSuccess(res, { message: "Verification code sent successfully" });
+    sendSuccess(res, { message: "Verification code sent successfully." });
   },
 );
 
@@ -599,7 +623,7 @@ router.post(
         res,
         400,
         "TWO_FACTOR_CODE_REQUIRED",
-        "Verification code is required",
+        "Please enter the 6-digit verification code from your email.",
       );
       return;
     }
@@ -609,7 +633,7 @@ router.post(
         res,
         400,
         "TWO_FACTOR_ALREADY_ENABLED",
-        "Two-factor authentication is already enabled",
+        "Two-factor authentication is already enabled for this account.",
       );
       return;
     }
@@ -619,7 +643,7 @@ router.post(
         res,
         400,
         "TWO_FACTOR_INVALID_OR_EXPIRED",
-        "Verification code is invalid or has expired",
+        "The verification code is incorrect or expired. Enter the newest 6-digit code from your email, or request a new code.",
       );
       return;
     }
@@ -634,7 +658,7 @@ router.post(
     });
 
     sendSuccess(res, {
-      message: "Two-factor authentication enabled successfully",
+      message: "Two-factor authentication enabled successfully.",
       user: sanitizeUser(updatedUser),
       twoFactorEnabled: updatedUser.twoFactorEnabled,
     });
@@ -654,13 +678,13 @@ router.post(
         res,
         400,
         "TWO_FACTOR_NOT_ENABLED",
-        "Two-factor authentication is not enabled",
+        "Two-factor authentication is already off for this account.",
       );
       return;
     }
 
     await issueAndSendTwoFactorCode(user);
-    sendSuccess(res, { message: "Verification code sent successfully" });
+    sendSuccess(res, { message: "Verification code sent successfully." });
   },
 );
 
@@ -679,7 +703,7 @@ router.post(
         res,
         400,
         "TWO_FACTOR_CODE_REQUIRED",
-        "Verification code is required",
+        "Please enter the 6-digit verification code from your email.",
       );
       return;
     }
@@ -689,7 +713,7 @@ router.post(
         res,
         400,
         "TWO_FACTOR_NOT_ENABLED",
-        "Two-factor authentication is not enabled",
+        "Two-factor authentication is already off for this account.",
       );
       return;
     }
@@ -699,7 +723,7 @@ router.post(
         res,
         400,
         "TWO_FACTOR_INVALID_OR_EXPIRED",
-        "Verification code is invalid or has expired",
+        "The verification code is incorrect or expired. Enter the newest 6-digit code from your email, or request a new code.",
       );
       return;
     }
@@ -714,7 +738,7 @@ router.post(
     });
 
     sendSuccess(res, {
-      message: "Two-factor authentication disabled successfully",
+      message: "Two-factor authentication disabled successfully.",
       user: sanitizeUser(updatedUser),
       twoFactorEnabled: updatedUser.twoFactorEnabled,
     });
@@ -734,13 +758,13 @@ router.post(
         res,
         400,
         "TWO_FACTOR_NOT_ENABLED",
-        "Two-factor authentication is not enabled",
+        "Two-factor authentication must be enabled before requesting a password-change code.",
       );
       return;
     }
 
     await issueAndSendTwoFactorCode(user);
-    sendSuccess(res, { message: "Verification code sent successfully" });
+    sendSuccess(res, { message: "Verification code sent successfully." });
   },
 );
 
@@ -758,13 +782,13 @@ router.post(
         res,
         400,
         "TWO_FACTOR_NOT_ENABLED",
-        "Two-factor authentication is not enabled",
+        "Two-factor authentication is not enabled for this account.",
       );
       return;
     }
 
     await issueAndSendTwoFactorCode(user);
-    sendSuccess(res, { message: "Verification code sent successfully" });
+    sendSuccess(res, { message: "Verification code sent successfully." });
   },
 );
 
@@ -782,7 +806,7 @@ router.post(
         res,
         400,
         "TWO_FACTOR_NOT_ENABLED",
-        "Two-factor authentication is not enabled",
+        "Two-factor authentication is already off for this account.",
       );
       return;
     }
@@ -797,7 +821,7 @@ router.post(
     });
 
     sendSuccess(res, {
-      message: "Two-factor authentication disabled successfully",
+      message: "Two-factor authentication disabled successfully.",
       user: sanitizeUser(updatedUser),
       twoFactorEnabled: updatedUser.twoFactorEnabled,
     });
@@ -813,7 +837,7 @@ router.post(
       typeof email === "string" ? normalizeEmail(email) : "";
 
     if (!normalizedEmail) {
-      sendError(res, 400, "VALIDATION_ERROR", "Email is required");
+      sendError(res, 400, "VALIDATION_ERROR", "Please enter the email address for your account.");
       return;
     }
 
@@ -822,7 +846,7 @@ router.post(
         res,
         400,
         "VALIDATION_ERROR",
-        "Please enter a valid email address",
+        "Please enter a valid email address, like name@example.com.",
       );
       return;
     }
@@ -875,7 +899,12 @@ router.get(
       typeof req.query.token === "string" ? req.query.token.trim() : "";
 
     if (!token) {
-      sendError(res, 400, "RESET_TOKEN_MISSING", "Reset token is required");
+      sendError(
+        res,
+        400,
+        "RESET_TOKEN_MISSING",
+        "This reset link is missing its token. Request a new password reset email.",
+      );
       return;
     }
 
@@ -886,13 +915,13 @@ router.get(
         res,
         400,
         "RESET_TOKEN_INVALID_OR_EXPIRED",
-        "This password reset link is invalid or has expired",
+        "This password reset link is invalid or expired. Request a new reset link and use the newest email.",
       );
       return;
     }
 
     sendSuccess(res, {
-      message: "Reset token is valid",
+      message: "Reset token is valid.",
     });
   },
 );
@@ -908,7 +937,7 @@ router.post(
         res,
         400,
         "VALIDATION_ERROR",
-        "Token and new password are required",
+        "This reset request is missing the reset token or new password. Open the newest reset email and try again.",
       );
       return;
     }
@@ -926,7 +955,7 @@ router.post(
         res,
         400,
         "RESET_TOKEN_INVALID_OR_EXPIRED",
-        "This password reset link is invalid or has expired",
+        "This password reset link is invalid or expired. Request a new reset link and use the newest email.",
       );
       return;
     }
@@ -936,7 +965,7 @@ router.post(
     });
 
     if (!user) {
-      sendError(res, 404, "USER_NOT_FOUND", "User not found");
+      sendError(res, 404, "USER_NOT_FOUND", "User not found.");
       return;
     }
 
@@ -964,7 +993,7 @@ router.post(
     ]);
 
     sendSuccess(res, {
-      message: "Password reset successful",
+      message: "Password reset successful.",
       passwordUpdatedAt: now,
     });
   },
@@ -987,7 +1016,7 @@ router.post(
         res,
         400,
         "VALIDATION_ERROR",
-        "Current password and new password are required",
+        "Please enter your current password and your new password.",
       );
       return;
     }
@@ -1008,7 +1037,7 @@ router.post(
         res,
         400,
         "AUTH_CURRENT_PASSWORD_INCORRECT",
-        "Current password is incorrect",
+        "Current password is incorrect. Re-enter your current password, or use Forgot password if you do not remember it.",
       );
       return;
     }
@@ -1019,7 +1048,7 @@ router.post(
         res,
         400,
         "VALIDATION_ERROR",
-        "New password must be different from your current password",
+        "New password must be different from your current password.",
       );
       return;
     }
@@ -1030,7 +1059,7 @@ router.post(
           res,
           400,
           "TWO_FACTOR_CODE_REQUIRED",
-          "Verification code is required",
+          "Please enter the 6-digit verification code before changing your password.",
         );
         return;
       }
@@ -1040,7 +1069,7 @@ router.post(
           res,
           400,
           "TWO_FACTOR_INVALID_OR_EXPIRED",
-          "Verification code is invalid or has expired",
+          "The verification code is incorrect or expired. Send a new code and enter the newest 6-digit code from your email.",
         );
         return;
       }
@@ -1060,7 +1089,7 @@ router.post(
     });
 
     sendSuccess(res, {
-      message: "Password changed successfully",
+      message: "Password changed successfully.",
       passwordUpdatedAt: now,
     });
   },
@@ -1076,7 +1105,7 @@ router.get(
     });
 
     if (!user) {
-      sendError(res, 404, "USER_NOT_FOUND", "User not found");
+      sendError(res, 404, "USER_NOT_FOUND", "User not found.");
       return;
     }
 
@@ -1095,7 +1124,7 @@ router.patch(
 
       if (name !== undefined) {
         if (typeof name !== "string" || !name.trim()) {
-          sendError(res, 400, "VALIDATION_ERROR", "Name must be a non-empty string");
+          sendError(res, 400, "VALIDATION_ERROR", "Name must be a non-empty string.");
           return;
         }
         data.name = name.trim();
@@ -1103,14 +1132,14 @@ router.patch(
 
       if (avatar !== undefined) {
         if (avatar !== null && typeof avatar !== "string") {
-          sendError(res, 400, "VALIDATION_ERROR", "Avatar must be a string URL or null");
+          sendError(res, 400, "VALIDATION_ERROR", "Avatar must be a string URL or null.");
           return;
         }
         data.avatar = avatar;
       }
 
       if (Object.keys(data).length === 0) {
-        sendError(res, 400, "VALIDATION_ERROR", "No fields to update");
+        sendError(res, 400, "VALIDATION_ERROR", "No fields to update.");
         return;
       }
 
@@ -1121,7 +1150,7 @@ router.patch(
 
       sendSuccess(res, sanitizeUser(updated));
     } catch (err) {
-      sendError(res, 500, "SERVER_ERROR", "Failed to update profile");
+      sendError(res, 500, "SERVER_ERROR", "Failed to update profile.");
     }
   },
 );

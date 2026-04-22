@@ -12,6 +12,7 @@ import CTASection from '@/components/landing/CTASection';
 import Footer from '@/components/landing/Footer';
 import { useRouter, useSearchParams } from 'next/navigation';
 import api from '@/lib/api';
+import { getErrorMessage } from '@/lib/errorMessage';
 
 function LandingPageContent() {
   const { user, login, loginWithGoogle, verifyTwoFactorLogin, register } = useAuth();
@@ -84,9 +85,11 @@ function LandingPageContent() {
         router.push(redirect);
       }
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { error?: { message?: string } } } };
       setAuthError(
-        error.response?.data?.error?.message || 'Login failed. Please try again or try registering.'
+        getErrorMessage(
+          err,
+          'Could not log in. Check your email and password, then try again.'
+        )
       );
     } finally {
       setAuthLoading(false);
@@ -112,9 +115,11 @@ function LandingPageContent() {
         router.push(redirect);
       }
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { error?: { message?: string } } } };
       setAuthError(
-        error.response?.data?.error?.message || 'Verification failed. Please try again.'
+        getErrorMessage(
+          err,
+          'Could not verify the code. Enter the newest 6-digit code from your email.'
+        )
       );
     } finally {
       setAuthLoading(false);
@@ -139,10 +144,11 @@ function LandingPageContent() {
         router.push(redirect);
       }
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { error?: { message?: string } } } };
       setAuthError(
-        error.response?.data?.error?.message ||
-        'Registration failed. Please try again or try a different email.'
+        getErrorMessage(
+          err,
+          'Could not create your account. Check the highlighted fields and try again.'
+        )
       );
     } finally {
       setAuthLoading(false);
@@ -164,10 +170,11 @@ function LandingPageContent() {
       setPendingTwoFactorUserId(null);
       setModalOpen(false);
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { error?: { message?: string } } } };
       setAuthError(
-        error.response?.data?.error?.message ||
-          'Google sign-in failed. Please try again.'
+        getErrorMessage(
+          err,
+          'Google login did not finish. Close the Google popup and try again.'
+        )
       );
     } finally {
       setAuthLoading(false);
@@ -186,10 +193,11 @@ function LandingPageContent() {
           'If an account with that email exists, a password reset link has been sent.'
       );
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { error?: { message?: string } } } };
       setForgotError(
-        error.response?.data?.error?.message ||
-          'Could not send reset link. Please try again.'
+        getErrorMessage(
+          err,
+          'Could not send the reset link. Check the email address and try again.'
+        )
       );
     } finally {
       setForgotLoading(false);

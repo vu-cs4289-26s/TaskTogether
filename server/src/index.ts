@@ -77,8 +77,11 @@ app.get('/', (req, res) => {
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({
-    error: 'Not Found',
-    path: req.path,
+    status: 'error',
+    error: {
+      code: 'ROUTE_NOT_FOUND',
+      message: `No API route matches ${req.method} ${req.path}. Check the request URL.`,
+    },
   });
 });
 
@@ -92,8 +95,14 @@ app.use(
   ) => {
     console.error('Error:', err);
     res.status(500).json({
-      error: 'Internal Server Error',
-      message: process.env.NODE_ENV === 'development' ? err.message : undefined,
+      status: 'error',
+      error: {
+        code: 'INTERNAL_SERVER_ERROR',
+        message:
+          process.env.NODE_ENV === 'development'
+            ? `Server error: ${err.message}`
+            : 'Something went wrong on the server. Please try again in a few minutes.',
+      },
     });
   }
 );
