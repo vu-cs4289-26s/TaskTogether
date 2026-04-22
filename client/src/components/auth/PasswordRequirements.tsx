@@ -21,10 +21,10 @@ function requirementMet(password: string, requirement: 'length' | 'upperLower' |
 }
 
 const requirementItems = [
-  { key: 'length' as const, label: '8+ characters' },
-  { key: 'upperLower' as const, label: 'Include upper and lowercase letters' },
-  { key: 'special' as const, label: 'Use at least one special character' },
-  { key: 'number' as const, label: 'Include at least one number' },
+  { key: 'length' as const, label: '8+ characters.' },
+  { key: 'upperLower' as const, label: 'Include upper and lowercase letters.' },
+  { key: 'special' as const, label: 'Use at least one special character.' },
+  { key: 'number' as const, label: 'Include at least one number.' },
 ];
 
 export default function PasswordRequirements({

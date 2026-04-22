@@ -23,6 +23,16 @@ interface AuthModalProps {
   requiresTwoFactor?: boolean;
 }
 
+function isPasswordStrong(password: string): boolean {
+  return (
+    password.length >= 8 &&
+    /[A-Z]/.test(password) &&
+    /[a-z]/.test(password) &&
+    /[^A-Za-z0-9]/.test(password) &&
+    /[0-9]/.test(password)
+  );
+}
+
 export default function AuthModal({
   isOpen,
   mode,
@@ -132,7 +142,7 @@ export default function AuthModal({
     : loading ||
       !email.trim() ||
       !password ||
-      (mode === 'register' && (!name.trim() || !agreedToTerms));
+      (mode === 'register' && (!name.trim() || !agreedToTerms || !isPasswordStrong(password)));
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -159,6 +169,13 @@ export default function AuthModal({
 
     if (!agreedToTerms) {
       setLocalError('Please agree to the Terms of Service and Privacy Policy.');
+      return;
+    }
+
+    if (!isPasswordStrong(password)) {
+      setLocalError(
+        'Password must be at least 8 characters and include uppercase, lowercase, a special character, and a number.'
+      );
       return;
     }
 

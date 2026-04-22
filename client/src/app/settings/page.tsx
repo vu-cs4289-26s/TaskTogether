@@ -7,6 +7,7 @@ import Button from '@/components/ui/Button';
 import Field, { inputClass } from '@/components/ui/Field';
 import api from '@/lib/api';
 import PasswordRequirements from '@/components/auth/PasswordRequirements';
+import { getErrorMessage } from '@/lib/errorMessage';
 
 type SectionProps = {
   title: string;
@@ -55,12 +56,13 @@ function isPasswordStrong(password: string): boolean {
     password.length >= 8 &&
     /[A-Z]/.test(password) &&
     /[a-z]/.test(password) &&
+    /[^A-Za-z0-9]/.test(password) &&
     /[0-9]/.test(password)
   );
 }
 
 function formatPasswordDate(dateString?: string) {
-  if (!dateString) return 'No password update date available';
+  if (!dateString) return 'No password update date available.';
 
   const date = new Date(dateString);
 
@@ -248,16 +250,14 @@ function ChangePasswordModal({
       const res = await api.post('/auth/2fa/send-password-change-code');
       setPasswordChangeCodeSent(true);
       setSuccess(
-        res.data?.data?.message || 'A verification code was sent to your email'
+        res.data?.data?.message || 'A verification code was sent to your email.'
       );
     } catch (err: unknown) {
-      const errorObj = err as {
-        response?: { data?: { error?: { message?: string } } };
-      };
-
       setError(
-        errorObj.response?.data?.error?.message ||
-          'Could not send verification code. Please try again.'
+        getErrorMessage(
+          err,
+          'Could not send the verification code. Check your email settings, then try again.'
+        )
       );
     } finally {
       setSendingPasswordChangeCode(false);
@@ -276,7 +276,7 @@ function ChangePasswordModal({
 
     if (!isPasswordStrong(newPassword)) {
       setError(
-        'New password must be at least 8 characters and include uppercase, lowercase, and a number.'
+        'New password must be at least 8 characters and include uppercase, lowercase, a special character, and a number.'
       );
       return;
     }
@@ -322,13 +322,11 @@ function ChangePasswordModal({
         onClose();
       }, 1000);
     } catch (err: unknown) {
-      const errorObj = err as {
-        response?: { data?: { error?: { message?: string } } };
-      };
-
       setError(
-        errorObj.response?.data?.error?.message ||
-          'Could not change password. Please try again.'
+        getErrorMessage(
+          err,
+          'Could not change your password. Check your current password and 2FA code, then try again.'
+        )
       );
     } finally {
       setLoading(false);
@@ -558,16 +556,14 @@ useEffect(() => {
 
       setTwoFactorModalOpen(true);
       setTwoFactorSuccess(
-        res.data?.data?.message || 'A verification code was sent to your email'
+        res.data?.data?.message || 'A verification code was sent to your email.'
       );
     } catch (err: unknown) {
-      const errorObj = err as {
-        response?: { data?: { error?: { message?: string } } };
-      };
-
       setTwoFactorError(
-        errorObj.response?.data?.error?.message ||
-          `Could not ${mode === 'enable' ? 'start enabling' : 'start disabling'} 2FA. Please try again.`
+        getErrorMessage(
+          err,
+          `Could not ${mode === 'enable' ? 'start enabling' : 'start disabling'} 2FA. Check your email settings and try again.`
+        )
       );
       setTwoFactorModalOpen(true);
     } finally {
@@ -609,13 +605,11 @@ useEffect(() => {
         closeTwoFactorModal();
       }, 1000);
     } catch (err: unknown) {
-      const errorObj = err as {
-        response?: { data?: { error?: { message?: string } } };
-      };
-
       setTwoFactorError(
-        errorObj.response?.data?.error?.message ||
-          'Could not verify code. Please try again.'
+        getErrorMessage(
+          err,
+          'Could not verify the code. Enter the newest 6-digit code from your email.'
+        )
       );
     } finally {
       setTwoFactorSubmitting(false);

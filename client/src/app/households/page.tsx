@@ -10,6 +10,7 @@ import type { Household } from '@/types/households';
 import Avatar from '@/components/ui/Avatar';
 import AddHouseholdModal from '@/components/modals/AddHouseholdModal';
 import JoinHouseholdModal from '@/components/modals/JoinHouseholdModal';
+import { getErrorMessage } from '@/lib/errorMessage';
 
 
 export default function HouseholdsPage() {
@@ -48,8 +49,13 @@ export default function HouseholdsPage() {
       }
 
       router.push(`/households/${created.id}`);
-    } catch {
-      setCreateError('Failed to create household. Please try again.');
+    } catch (err: unknown) {
+      setCreateError(
+        getErrorMessage(
+          err,
+          'Could not create the household. Check the household name and try again.'
+        )
+      );
     } finally {
       setIsCreating(false);
     }
@@ -66,8 +72,12 @@ export default function HouseholdsPage() {
 
             router.push(`/households/${joined.id}`);
         } catch (err: unknown) {
-            const e = err as { response?: { data?: { error?: { message?: string } } } };
-            setJoinError(e.response?.data?.error?.message || 'Failed to join household. Please check the code and try again.');
+            setJoinError(
+                getErrorMessage(
+                    err,
+                    'Could not join the household. Check the invite code and try again.'
+                )
+            );
         } finally {
             setIsJoining(false);
         }
@@ -77,8 +87,12 @@ export default function HouseholdsPage() {
         listHouseholds()
             .then((data) => setHouseholds(data))
             .catch((err) => {
-                const e = err as { response?: { data?: { error?: { message?: string } } } };
-                setError(e.response?.data?.error?.message || 'Failed to load households.');
+                setError(
+                    getErrorMessage(
+                        err,
+                        'Could not load your households. Refresh the page or log in again.'
+                    )
+                );
             })
             .finally(() => setLoading(false));
     }, []);

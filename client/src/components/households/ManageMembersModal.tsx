@@ -16,6 +16,7 @@ import {
   retractDeleteVoteApi,
   type DeleteVoteStatus,
 } from '@/lib/households.api';
+import { getErrorMessage } from '@/lib/errorMessage';
 
 type Props = {
   open: boolean;
@@ -129,8 +130,12 @@ export default function ManageMembersModal({
       await removeMemberApi(householdId, userId);
       onMembersChanged();
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: { message?: string } } } };
-      setError(e.response?.data?.error?.message || 'Failed to remove member.');
+      setError(
+        getErrorMessage(
+          err,
+          'Could not remove this member. Make sure you are an admin and try again.'
+        )
+      );
     } finally {
       setActionLoading(null);
     }
@@ -143,8 +148,12 @@ export default function ManageMembersModal({
       await promoteMemberApi(householdId, userId);
       onMembersChanged();
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: { message?: string } } } };
-      setError(e.response?.data?.error?.message || 'Failed to promote member.');
+      setError(
+        getErrorMessage(
+          err,
+          'Could not promote this member. Make sure you are an admin and try again.'
+        )
+      );
     } finally {
       setActionLoading(null);
     }
@@ -160,8 +169,12 @@ export default function ManageMembersModal({
       // Redirect to households list after leaving
       router.push('/households');
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: { message?: string } } } };
-      setError(e.response?.data?.error?.message || 'Failed to leave household.');
+      setError(
+        getErrorMessage(
+          err,
+          'Could not leave this household. Refresh the page and try again.'
+        )
+      );
     } finally {
       setActionLoading(null);
     }
@@ -189,8 +202,12 @@ export default function ManageMembersModal({
       setEmailSent(true);
       setEmailToInvite('');
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: { message?: string } } } };
-      setEmailError(e.response?.data?.error?.message || 'Failed to send invite email.');
+      setEmailError(
+        getErrorMessage(
+          err,
+          'Could not send the invite email. Check the email address and mail settings, then try again.'
+        )
+      );
     } finally {
       setEmailSending(false);
     }
@@ -223,8 +240,12 @@ export default function ManageMembersModal({
       setDeleteVoteStatus(status);
       setShowDeleteVoteConfirm(false);
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: { message?: string } } } };
-      setError(e.response?.data?.error?.message || 'Failed to cast delete vote.');
+      setError(
+        getErrorMessage(
+          err,
+          'Could not submit your household delete vote. Refresh the page and try again.'
+        )
+      );
     } finally {
       setDeleteVoteLoading(false);
     }
@@ -239,8 +260,12 @@ export default function ManageMembersModal({
       const status = await getDeleteVoteStatusApi(householdId);
       setDeleteVoteStatus(status);
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: { message?: string } } } };
-      setError(e.response?.data?.error?.message || 'Failed to retract delete vote.');
+      setError(
+        getErrorMessage(
+          err,
+          'Could not retract your household delete vote. Refresh the page and try again.'
+        )
+      );
     } finally {
       setDeleteVoteLoading(false);
     }

@@ -24,12 +24,7 @@ api.interceptors.response.use(
       }
     }
 
-    // Surface the server's detailed error message when available
-    const serverMessage = error.response?.data?.error?.message;
-    if (serverMessage) {
-      return Promise.reject(new Error(serverMessage));
-    }
-
+    // Keep the original Axios error shape so pages can read both the message and code.
     return Promise.reject(error);
   }
 );
