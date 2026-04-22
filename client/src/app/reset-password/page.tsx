@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import api from '@/lib/api';
 import Button from '@/components/ui/Button';
 import Field, { inputClass } from '@/components/ui/Field';
+import { getErrorMessage } from '@/lib/errorMessage';
 
 export default function ResetPasswordPage() {
   return (
@@ -46,11 +47,12 @@ function ResetPasswordContent() {
         setTokenValid(true);
         setPageError(null);
       } catch (err: unknown) {
-        const error = err as { response?: { data?: { error?: { message?: string } } } };
         setTokenValid(false);
         setPageError(
-          error.response?.data?.error?.message ||
-            'This password reset link is invalid or has expired.'
+          getErrorMessage(
+            err,
+            'This password reset link is invalid or has expired. Request a new reset link.'
+          )
         );
       } finally {
         setCheckingToken(false);
@@ -65,8 +67,16 @@ function ResetPasswordContent() {
     setSubmitError(null);
     setSubmitSuccess(null);
 
-    if (password.length < 8) {
-      setSubmitError('Password must be at least 8 characters.');
+    if (
+      password.length < 8 ||
+      !/[A-Z]/.test(password) ||
+      !/[a-z]/.test(password) ||
+      !/[^A-Za-z0-9]/.test(password) ||
+      !/[0-9]/.test(password)
+    ) {
+      setSubmitError(
+        'Password must be at least 8 characters and include uppercase, lowercase, a special character, and a number.'
+      );
       return;
     }
 
@@ -88,10 +98,11 @@ function ResetPasswordContent() {
         router.push('/');
       }, 1500);
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { error?: { message?: string } } } };
       setSubmitError(
-        error.response?.data?.error?.message ||
-          'Could not reset password. Please try again.'
+        getErrorMessage(
+          err,
+          'Could not reset your password. Check the password requirements and try again.'
+        )
       );
     } finally {
       setLoading(false);
@@ -144,7 +155,7 @@ function ResetPasswordContent() {
                 label="New Password"
                 htmlFor="password"
                 required
-                hint="Must be at least 8 characters"
+                hint="Must be at least 8 characters and include uppercase, lowercase, a special character, and a number."
               >
                 <input
                   id="password"

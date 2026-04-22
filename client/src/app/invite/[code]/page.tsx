@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { joinHouseholdApi } from '@/lib/households.api';
+import { getErrorMessage } from '@/lib/errorMessage';
 import Link from 'next/link';
 
 export default function InvitePage() {
@@ -37,7 +38,6 @@ export default function InvitePage() {
       } catch (err: unknown) {
         const e = err as { response?: { data?: { error?: { code?: string; message?: string } } } };
         const errorCode = e.response?.data?.error?.code;
-        const message = e.response?.data?.error?.message;
 
         if (errorCode === 'HOUSEHOLD_ALREADY_MEMBER') {
           // Already a member, redirect immediately
@@ -45,7 +45,12 @@ export default function InvitePage() {
           return;
         }
 
-        setError(message || 'Failed to join household. Please try again.');
+        setError(
+          getErrorMessage(
+            err,
+            'Could not join this household. The invite may be expired or invalid.'
+          )
+        );
         setIsLoading(false);
       }
     }
